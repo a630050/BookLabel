@@ -21,6 +21,8 @@ h1 { text-align: center; padding: 18px 0 10px; font-size: 22px; color: #2c3e50; 
 .import-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .import-row input[type=file] { flex: 1; min-width: 200px; }
 .import-info { color: #27ae60; font-weight: bold; }
+.btn-template { background: #95a5a6; font-size: 12px; padding: 5px 10px; margin-left: auto; }
+.btn-template:hover { background: #7f8c8d; }
 
 /* Two column layout */
 .columns { display: flex; gap: 14px; }
@@ -63,6 +65,8 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
 /* Custom text input */
 .custom-text-row { margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
 .custom-text-row input { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; width: 160px; font-size: 13px; }
+.offset-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 13px; color: #555; background: #f9f9f9; padding: 8px; border-radius: 4px; }
+.offset-row input { width: 50px; padding: 4px; border: 1px solid #ccc; border-radius: 3px; }
 
 /* Grid selector */
 .grid-selector { margin-bottom: 12px; }
@@ -88,7 +92,10 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
 <div class="container">
   <!-- Section 1: Import -->
   <div class="card">
-    <h2>匯入書庫檔</h2>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <h2 style="margin-bottom:0;">匯入書庫檔</h2>
+      <button class="btn btn-template" id="downloadTemplateBtn">下載 Excel 範本</button>
+    </div>
     <div class="import-row">
       <input type="file" id="fileInput" accept=".xls,.xlsx">
       <span id="importInfo" class="import-info"></span>
@@ -127,7 +134,13 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
       </div>
       <button class="btn btn-red" id="clearQueueBtn" style="margin-bottom:12px;" disabled>清空序列</button>
 
-      <h2>套印設定</h2>
+      <h2>套印設定 <span style="font-size:13px; color:#7f8c8d; font-weight:normal;">(相容全圖系統耗材)</span></h2>
+      <div class="offset-row">
+        <span>偏移(mm)：</span>
+        <label>X <input type="number" id="offsetX" value="0" step="0.5"></label>
+        <label>Y <input type="number" id="offsetY" value="0" step="0.5"></label>
+        <span style="font-size:11px; color:#aaa; margin-left:4px;">(正值右/下)</span>
+      </div>
       <div class="type-row">
         <label><input type="radio" name="labelType" value="spine" checked> 書標 (4×10)</label>
         <label><input type="radio" name="labelType" value="accession"> 登錄號 (3×10)</label>
@@ -207,6 +220,48 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
   const nextPageBtn = $('nextPage');
   const jumpPageInput = $('jumpPage');
   const jumpBtn = $('jumpBtn');
+  const offsetX = $('offsetX');
+  const offsetY = $('offsetY');
+  const downloadTemplateBtn = $('downloadTemplateBtn');
+
+  // ===== Persistence =====
+  const CONFIG_KEY = 'libstick_config';
+  function saveConfig() {
+    const config = {
+      offsetX: parseFloat(offsetX.value) || 0,
+      offsetY: parseFloat(offsetY.value) || 0
+    };
+    localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+  }
+  function loadConfig() {
+    const data = localStorage.getItem(CONFIG_KEY);
+    if (data) {
+      const config = JSON.parse(data);
+      offsetX.value = config.offsetX || 0;
+      offsetY.value = config.offsetY || 0;
+    }
+  }
+  offsetX.addEventListener('change', saveConfig);
+  offsetY.addEventListener('change', saveConfig);
+  loadConfig();
+
+  // ===== Template Generation =====
+  downloadTemplateBtn.addEventListener('click', () => {
+    const data = [
+      ["登錄號", "書名", "著者名", "ISBN", "裝訂別", "特藏號", "索書號"],
+      ["00000001", "範例書籍一", "作者A", "9789570339031", "01", "", "859.6/8644/"],
+      ["00000002", "範例書籍二", "作者B", "9789579015004", "01", "", "800/1234/v.1"],
+      ["00000003", "範例書籍三", "作者C", "9789860000001", "01", "", "310/5678/v.2"]
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    // 設定欄寬
+    ws['!cols'] = [
+      { wch: 12 }, { wch: 30 }, { wch: 15 }, { wch: 16 }, { wch: 8 }, { wch: 8 }, { wch: 20 }
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "書庫資料");
+    XLSX.writeFile(wb, "書庫匯入範本.xlsx");
+  });
 
   // ===== Excel Import =====
   function loadBooksIntoUI() {
@@ -276,14 +331,33 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
         const wb = XLSX.read(data, { type: 'array' });
         const sheet = wb.Sheets[wb.SheetNames[0]];
         const json = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
-        // Data starts from row 4 (index 3)
+        // Smart detection: find header row containing "登錄號" in col A or "書名" in col B
+        let dataStartRow = 0;
+        for (let i = 0; i < Math.min(json.length, 10); i++) {
+          const row = json[i];
+          const colA = String(row[0] || '').trim();
+          const colB = String(row[1] || '').trim();
+          if (colA === '登錄號' || colB === '書名') {
+            dataStartRow = i + 1; // Data starts right after header
+            break;
+          }
+        }
+        // Fallback: if no header found, check if row 0 looks like data (starts with digits)
+        if (dataStartRow === 0 && json.length > 0) {
+          const firstA = String(json[0][0] || '').trim();
+          if (/^\d+$/.test(firstA)) {
+            dataStartRow = 0; // No header, data starts at row 0
+          } else {
+            dataStartRow = 1; // Assume 1 title row
+          }
+        }
         allBooks = [];
-        for (let i = 3; i < json.length; i++) {
+        for (let i = dataStartRow; i < json.length; i++) {
           const row = json[i];
           const accNo = String(row[0] || '').trim();
           const title = String(row[1] || '').trim();
           const callNo = String(row[6] || '').trim();
-          if (accNo) {
+          if (accNo && /\d/.test(accNo)) {
             allBooks.push({ accNo, title, callNo });
           }
         }
@@ -612,6 +686,9 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
 
     while (itemIdx < totalItems) {
       const { canvas, ctx } = createPageCanvas();
+      const offX = mmToPx(parseFloat(offsetX.value) || 0);
+      const offY = mmToPx(parseFloat(offsetY.value) || 0);
+      ctx.translate(offX, offY);
       const mL = mmToPx(cfg.marginLeft);
       const mT = mmToPx(cfg.marginTop);
       const cW = mmToPx(cfg.cellW);
@@ -674,6 +751,9 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
 
     while (itemIdx < totalItems) {
       const { canvas, ctx } = createPageCanvas();
+      const offX = mmToPx(parseFloat(offsetX.value) || 0);
+      const offY = mmToPx(parseFloat(offsetY.value) || 0);
+      ctx.translate(offX, offY);
       const mL = mmToPx(cfg.marginLeft);
       const mT = mmToPx(cfg.marginTop);
       const cW = mmToPx(cfg.cellW);
