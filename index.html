@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>圖書標籤套印系統</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "Microsoft JhengHei", "微軟正黑體", sans-serif; background: #f0f2f5; color: #333; }
+h1 { text-align: center; padding: 18px 0 10px; font-size: 22px; color: #2c3e50; }
+.credit { text-align: center; font-size: 12px; color: #7f8c8d; padding: 20px 0; }
+.container { max-width: 1200px; margin: 0 auto; padding: 0 16px 4px; }
+
+/* Section cards */
+.card { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.1); padding: 16px; margin-bottom: 14px; }
+.card h2 { font-size: 15px; margin-bottom: 10px; color: #34495e; border-bottom: 2px solid #3498db; padding-bottom: 6px; display: inline-block; }
+
+/* Import section */
+.import-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.import-row input[type=file] { flex: 1; min-width: 200px; }
+.import-info { color: #27ae60; font-weight: bold; }
+
+/* Two column layout */
+.columns { display: flex; gap: 14px; }
+.col-left { flex: 1; min-width: 0; }
+.col-right { width: 420px; flex-shrink: 0; }
+@media (max-width: 860px) { .columns { flex-direction: column; } .col-right { width: 100%; } }
+
+/* Search */
+.search-row { display: flex; gap: 8px; margin-bottom: 8px; }
+.search-row input { flex: 1; padding: 7px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+.search-row button, .btn { padding: 7px 14px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; color: #fff; }
+.btn-blue { background: #3498db; } .btn-blue:hover { background: #2980b9; }
+.btn-green { background: #27ae60; } .btn-green:hover { background: #219a52; }
+.btn-red { background: #e74c3c; } .btn-red:hover { background: #c0392b; }
+.btn-orange { background: #e67e22; } .btn-orange:hover { background: #d35400; }
+.btn:disabled { background: #bdc3c7; cursor: not-allowed; }
+
+/* Book list table */
+.book-table-wrap { max-height: 360px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 4px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead { position: sticky; top: 0; background: #ecf0f1; z-index: 1; }
+th, td { padding: 6px 8px; text-align: left; border-bottom: 1px solid #eee; }
+th { font-weight: 600; }
+tr:hover { background: #f7f9fb; }
+td:first-child, th:first-child { width: 36px; text-align: center; }
+.pagination { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 8px; font-size: 13px; }
+.pagination button { padding: 4px 10px; }
+
+/* Print queue */
+.queue-list { max-height: 200px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 4px; margin-bottom: 10px; }
+.queue-item { display: flex; align-items: center; justify-content: space-between; padding: 5px 8px; border-bottom: 1px solid #f0f0f0; font-size: 12px; }
+.queue-item:last-child { border-bottom: none; }
+.queue-item .remove-btn { background: none; border: none; color: #e74c3c; cursor: pointer; font-size: 15px; padding: 0 4px; }
+.queue-empty { padding: 20px; text-align: center; color: #999; font-size: 13px; }
+
+/* Label type selector */
+.type-row { display: flex; align-items: center; gap: 16px; margin-bottom: 10px; }
+.type-row label { cursor: pointer; font-size: 14px; display: flex; align-items: center; gap: 4px; }
+
+/* Custom text input */
+.custom-text-row { margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+.custom-text-row input { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; width: 160px; font-size: 13px; }
+
+/* Grid selector */
+.grid-selector { margin-bottom: 12px; }
+.grid-selector p { font-size: 13px; margin-bottom: 6px; color: #555; }
+.grid-wrap { display: inline-block; border: 1px solid #ccc; border-radius: 4px; padding: 4px; background: #fafafa; }
+.grid-wrap table { border-collapse: collapse; }
+.grid-wrap td { width: 28px; height: 20px; border: 1px solid #ddd; text-align: center; font-size: 9px; cursor: pointer; color: #aaa; user-select: none; }
+.grid-wrap td.skipped { background: #f0f0f0; color: #ccc; }
+.grid-wrap td.active { background: #3498db; color: #fff; }
+.grid-wrap td:hover { background: #d5e8f7; }
+
+/* Action buttons */
+.action-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Preview */
+.preview-section { margin-top: 14px; }
+.preview-section iframe { width: 100%; height: 600px; border: 1px solid #ccc; border-radius: 4px; background: #fff; }
+.preview-placeholder { width: 100%; height: 300px; border: 1px solid #ddd; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: #999; font-size: 14px; background: #fafafa; }
+</style>
+</head>
+<body>
+<h1>圖書標籤套印系統</h1>
+<div class="container">
+  <!-- Section 1: Import -->
+  <div class="card">
+    <h2>匯入書庫檔</h2>
+    <div class="import-row">
+      <input type="file" id="fileInput" accept=".xls,.xlsx">
+      <span id="importInfo" class="import-info"></span>
+    </div>
+  </div>
+
+  <div class="columns">
+    <!-- Left: Book list -->
+    <div class="col-left card">
+      <h2>書庫清單</h2>
+      <div class="search-row">
+        <input type="text" id="searchInput" placeholder="搜尋登錄號或書名..." disabled>
+        <button class="btn btn-green" id="addToQueueBtn" disabled>加入套印序列</button>
+      </div>
+      <div class="book-table-wrap" id="bookTableWrap">
+        <table>
+          <thead><tr><th><input type="checkbox" id="selectAll"></th><th id="sortAccNo" style="cursor:pointer;user-select:none;">登錄號 <span id="sortIcon">⇅</span></th><th>書名</th><th>索書號</th></tr></thead>
+          <tbody id="bookTableBody"><tr><td colspan="4" style="text-align:center;color:#999;padding:30px;">請先匯入書庫檔</td></tr></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="pagination" style="display:none;">
+        <button class="btn btn-blue" id="prevPage">上一頁</button>
+        <span id="pageInfo"></span>
+        <button class="btn btn-blue" id="nextPage">下一頁</button>
+        <span style="margin-left:8px;">跳至</span>
+        <input type="number" id="jumpPage" min="1" style="width:60px;padding:4px 6px;border:1px solid #ccc;border-radius:4px;font-size:13px;">
+        <button class="btn btn-blue" id="jumpBtn">Go</button>
+      </div>
+    </div>
+
+    <!-- Right: Queue & Settings -->
+    <div class="col-right card">
+      <h2>套印序列 (<span id="queueCount">0</span> 筆)</h2>
+      <div class="queue-list" id="queueList">
+        <div class="queue-empty">尚未加入任何書籍</div>
+      </div>
+      <button class="btn btn-red" id="clearQueueBtn" style="margin-bottom:12px;" disabled>清空序列</button>
+
+      <h2>套印設定</h2>
+      <div class="type-row">
+        <label><input type="radio" name="labelType" value="spine" checked> 書標 (4×10)</label>
+        <label><input type="radio" name="labelType" value="accession"> 登錄號 (3×10)</label>
+      </div>
+      <div class="custom-text-row" id="customTextRow" style="display:none;">
+        <span style="font-size:13px;">自訂文字：</span>
+        <input type="text" id="customText" value="○○國小" placeholder="標籤上方文字">
+      </div>
+      <div class="grid-selector" id="gridSelector">
+        <p>點選起始列印位置：</p>
+        <div class="grid-wrap" id="gridWrap"></div>
+      </div>
+      <div class="action-row">
+        <button class="btn btn-blue" id="previewBtn" disabled>預覽</button>
+        <button class="btn btn-green" id="downloadBtn" disabled>下載 PDF</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Preview -->
+  <div class="card preview-section" id="previewSection" style="display:none;">
+    <h2>列印預覽</h2>
+    <iframe id="previewFrame"></iframe>
+  </div>
+  <div class="credit">程式設計:徐承佑</div>
+</div>
+
+<!-- Hidden canvas for barcode generation -->
+<canvas id="barcodeCanvas" style="display:none;"></canvas>
+
+<script>
+(function() {
+  'use strict';
+
+  // ===== Constants =====
+  const DPI = 300;
+  const MM = DPI / 25.4; // 1mm in pixels at DPI
+  const A4_W = 210, A4_H = 297; // mm
+  const PAGE_W = Math.round(A4_W * MM), PAGE_H = Math.round(A4_H * MM);
+
+  const SPINE = { cols: 4, rows: 10, cellW: 37, cellH: 26, marginLeft: 31, marginTop: 18.5 };
+  const ACCESSION = { cols: 3, rows: 10, cellW: 52, cellH: 26, marginLeft: 27, marginTop: 18.5 };
+
+  const FONT_FAMILY = '"DFKai-SB", "BiauKai", "標楷體", "KaiTi", serif';
+  const PER_PAGE = 50;
+
+  // ===== State =====
+  let allBooks = [];
+  let filteredBooks = [];
+  let printQueue = [];
+  let startCellIndex = 0;
+  let currentPage = 0;
+  let lastPdfBlob = null;
+  let sortOrder = 0; // 0=original, 1=asc, 2=desc
+
+  // ===== DOM Elements =====
+  const $ = id => document.getElementById(id);
+  const fileInput = $('fileInput');
+  const importInfo = $('importInfo');
+  const searchInput = $('searchInput');
+  const bookTableBody = $('bookTableBody');
+  const selectAll = $('selectAll');
+  const addToQueueBtn = $('addToQueueBtn');
+  const queueList = $('queueList');
+  const queueCount = $('queueCount');
+  const clearQueueBtn = $('clearQueueBtn');
+  const customTextRow = $('customTextRow');
+  const customText = $('customText');
+  const gridWrap = $('gridWrap');
+  const previewBtn = $('previewBtn');
+  const downloadBtn = $('downloadBtn');
+  const previewSection = $('previewSection');
+  const previewFrame = $('previewFrame');
+  const pagination = $('pagination');
+  const pageInfo = $('pageInfo');
+  const prevPageBtn = $('prevPage');
+  const nextPageBtn = $('nextPage');
+  const jumpPageInput = $('jumpPage');
+  const jumpBtn = $('jumpBtn');
+
+  // ===== Excel Import =====
+  function loadBooksIntoUI() {
+    importInfo.textContent = '已匯入 ' + allBooks.length + ' 筆（快取）';
+    searchInput.disabled = false;
+    addToQueueBtn.disabled = false;
+    filteredBooks = [...allBooks];
+    currentPage = 0;
+    renderBookTable();
+  }
+
+  function saveBooksToCache() {
+    try {
+      localStorage.setItem('libstick_books', JSON.stringify(allBooks));
+    } catch (e) {
+      console.warn('快取儲存失敗（資料過大），將使用 IndexedDB');
+      saveBooksToIDB();
+    }
+  }
+
+  function saveBooksToIDB() {
+    const req = indexedDB.open('libstick', 1);
+    req.onupgradeneeded = (e) => { e.target.result.createObjectStore('books'); };
+    req.onsuccess = (e) => {
+      const db = e.target.result;
+      const tx = db.transaction('books', 'readwrite');
+      tx.objectStore('books').put(allBooks, 'data');
+    };
+  }
+
+  function loadBooksFromCache(callback) {
+    // Try localStorage first
+    const cached = localStorage.getItem('libstick_books');
+    if (cached) {
+      try {
+        const data = JSON.parse(cached);
+        if (Array.isArray(data) && data.length > 0) { callback(data); return; }
+      } catch (e) {}
+    }
+    // Fallback to IndexedDB
+    const req = indexedDB.open('libstick', 1);
+    req.onupgradeneeded = (e) => { e.target.result.createObjectStore('books'); };
+    req.onsuccess = (e) => {
+      const db = e.target.result;
+      const tx = db.transaction('books', 'readonly');
+      const getReq = tx.objectStore('books').get('data');
+      getReq.onsuccess = () => {
+        if (getReq.result && getReq.result.length > 0) callback(getReq.result);
+      };
+    };
+  }
+
+  // Auto-load from cache on page load
+  loadBooksFromCache(function(data) {
+    allBooks = data;
+    loadBooksIntoUI();
+  });
+
+  fileInput.addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    importInfo.textContent = '匯入中...';
+    const reader = new FileReader();
+    reader.onload = function(ev) {
+      try {
+        const data = new Uint8Array(ev.target.result);
+        const wb = XLSX.read(data, { type: 'array' });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+        // Data starts from row 4 (index 3)
+        allBooks = [];
+        for (let i = 3; i < json.length; i++) {
+          const row = json[i];
+          const accNo = String(row[0] || '').trim();
+          const title = String(row[1] || '').trim();
+          const callNo = String(row[6] || '').trim();
+          if (accNo) {
+            allBooks.push({ accNo, title, callNo });
+          }
+        }
+        importInfo.textContent = '已匯入 ' + allBooks.length + ' 筆';
+        searchInput.disabled = false;
+        addToQueueBtn.disabled = false;
+        filteredBooks = [...allBooks];
+        currentPage = 0;
+        renderBookTable();
+        // Save to cache
+        saveBooksToCache();
+      } catch (err) {
+        importInfo.textContent = '匯入失敗: ' + err.message;
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+
+  // ===== Book Table =====
+  function renderBookTable() {
+    const start = currentPage * PER_PAGE;
+    const end = Math.min(start + PER_PAGE, filteredBooks.length);
+    const totalPages = Math.ceil(filteredBooks.length / PER_PAGE);
+
+    if (filteredBooks.length === 0) {
+      bookTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999;padding:20px;">無符合結果</td></tr>';
+      pagination.style.display = 'none';
+      return;
+    }
+
+    let html = '';
+    for (let i = start; i < end; i++) {
+      const b = filteredBooks[i];
+      const inQueue = printQueue.some(q => q.accNo === b.accNo);
+      html += `<tr>
+        <td><input type="checkbox" class="book-cb" data-idx="${i}" ${inQueue ? 'disabled checked' : ''}></td>
+        <td>${esc(b.accNo)}</td>
+        <td title="${esc(b.title)}">${esc(truncate(b.title, 40))}</td>
+        <td title="${esc(b.callNo)}">${esc(truncate(b.callNo, 20))}</td>
+      </tr>`;
+    }
+    bookTableBody.innerHTML = html;
+    selectAll.checked = false;
+
+    // Pagination
+    if (totalPages > 1) {
+      pagination.style.display = 'flex';
+      pageInfo.textContent = `第 ${currentPage + 1} / ${totalPages} 頁 (共 ${filteredBooks.length} 筆)`;
+      prevPageBtn.disabled = currentPage === 0;
+      nextPageBtn.disabled = currentPage >= totalPages - 1;
+      jumpPageInput.max = totalPages;
+      jumpPageInput.placeholder = totalPages;
+    } else {
+      pagination.style.display = filteredBooks.length > 0 ? 'flex' : 'none';
+      pageInfo.textContent = `共 ${filteredBooks.length} 筆`;
+      prevPageBtn.disabled = true;
+      nextPageBtn.disabled = true;
+    }
+  }
+
+  prevPageBtn.addEventListener('click', () => { if (currentPage > 0) { currentPage--; renderBookTable(); } });
+  nextPageBtn.addEventListener('click', () => { currentPage++; renderBookTable(); });
+  jumpBtn.addEventListener('click', doJump);
+  jumpPageInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doJump(); });
+  function doJump() {
+    const totalPages = Math.ceil(filteredBooks.length / PER_PAGE);
+    let target = parseInt(jumpPageInput.value);
+    if (isNaN(target) || target < 1) target = 1;
+    if (target > totalPages) target = totalPages;
+    currentPage = target - 1;
+    jumpPageInput.value = '';
+    renderBookTable();
+  }
+
+  // ===== Sort by 登錄號 =====
+  $('sortAccNo').addEventListener('click', function() {
+    sortOrder = (sortOrder + 1) % 3;
+    const icon = $('sortIcon');
+    if (sortOrder === 0) {
+      icon.textContent = '⇅';
+    } else if (sortOrder === 1) {
+      icon.textContent = '↑';
+    } else {
+      icon.textContent = '↓';
+    }
+    applySort();
+    currentPage = 0;
+    renderBookTable();
+  });
+
+  function applySort() {
+    if (sortOrder === 1) {
+      filteredBooks.sort((a, b) => a.accNo.localeCompare(b.accNo));
+    } else if (sortOrder === 2) {
+      filteredBooks.sort((a, b) => b.accNo.localeCompare(a.accNo));
+    } else {
+      // Restore original order by re-filtering
+      const q = searchInput.value.trim().toLowerCase();
+      if (!q) {
+        filteredBooks = [...allBooks];
+      } else {
+        filteredBooks = allBooks.filter(b =>
+          b.accNo.toLowerCase().includes(q) || b.title.toLowerCase().includes(q)
+        );
+      }
+    }
+  }
+
+  // ===== Search =====
+  let searchTimer = null;
+  searchInput.addEventListener('input', function() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      const q = searchInput.value.trim().toLowerCase();
+      if (!q) {
+        filteredBooks = [...allBooks];
+      } else {
+        filteredBooks = allBooks.filter(b =>
+          b.accNo.toLowerCase().includes(q) || b.title.toLowerCase().includes(q)
+        );
+      }
+      if (sortOrder !== 0) applySort();
+      currentPage = 0;
+      renderBookTable();
+    }, 200);
+  });
+
+  // ===== Select All =====
+  selectAll.addEventListener('change', function() {
+    document.querySelectorAll('.book-cb:not(:disabled)').forEach(cb => cb.checked = selectAll.checked);
+  });
+
+  // ===== Add to Queue =====
+  addToQueueBtn.addEventListener('click', function() {
+    const checked = document.querySelectorAll('.book-cb:checked:not(:disabled)');
+    checked.forEach(cb => {
+      const idx = parseInt(cb.dataset.idx);
+      const book = filteredBooks[idx];
+      if (book && !printQueue.some(q => q.accNo === book.accNo)) {
+        printQueue.push({ ...book });
+      }
+    });
+    renderQueue();
+    renderBookTable();
+    updateButtons();
+  });
+
+  // ===== Queue Management =====
+  function renderQueue() {
+    queueCount.textContent = printQueue.length;
+    if (printQueue.length === 0) {
+      queueList.innerHTML = '<div class="queue-empty">尚未加入任何書籍</div>';
+      clearQueueBtn.disabled = true;
+      return;
+    }
+    clearQueueBtn.disabled = false;
+    let html = '';
+    printQueue.forEach((item, i) => {
+      html += `<div class="queue-item">
+        <span>${esc(item.accNo)} - ${esc(truncate(item.title, 24))}</span>
+        <button class="remove-btn" data-qi="${i}" title="移除">✕</button>
+      </div>`;
+    });
+    queueList.innerHTML = html;
+    queueList.querySelectorAll('.remove-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        printQueue.splice(parseInt(this.dataset.qi), 1);
+        renderQueue();
+        renderBookTable();
+        updateButtons();
+      });
+    });
+  }
+
+  clearQueueBtn.addEventListener('click', function() {
+    printQueue = [];
+    renderQueue();
+    renderBookTable();
+    updateButtons();
+  });
+
+  function updateButtons() {
+    const hasQueue = printQueue.length > 0;
+    previewBtn.disabled = !hasQueue;
+    downloadBtn.disabled = !hasQueue;
+  }
+
+  // ===== Label Type Toggle =====
+  document.querySelectorAll('input[name="labelType"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+      customTextRow.style.display = this.value === 'accession' ? 'flex' : 'none';
+      startCellIndex = 0;
+      buildGrid();
+    });
+  });
+
+  function getLabelType() {
+    return document.querySelector('input[name="labelType"]:checked').value;
+  }
+
+  function getConfig() {
+    return getLabelType() === 'spine' ? SPINE : ACCESSION;
+  }
+
+  // ===== Grid Selector =====
+  function buildGrid() {
+    const cfg = getConfig();
+    let html = '<table>';
+    let cellIdx = 0;
+    for (let r = 0; r < cfg.rows; r++) {
+      html += '<tr>';
+      for (let c = 0; c < cfg.cols; c++) {
+        const idx = cellIdx;
+        const cls = idx < startCellIndex ? 'skipped' : (idx === startCellIndex ? 'active' : '');
+        html += `<td class="${cls}" data-ci="${idx}">${idx + 1}</td>`;
+        cellIdx++;
+      }
+      html += '</tr>';
+    }
+    html += '</table>';
+    gridWrap.innerHTML = html;
+
+    gridWrap.querySelectorAll('td').forEach(td => {
+      td.addEventListener('click', function() {
+        startCellIndex = parseInt(this.dataset.ci);
+        buildGrid();
+      });
+    });
+  }
+  buildGrid();
+
+  // ===== PDF Generation (Canvas-based) =====
+  function mmToPx(mm) { return Math.round(mm * MM); }
+
+  function ptToPx(pt) { return Math.round(pt * DPI / 72); }
+
+  function createPageCanvas() {
+    const c = document.createElement('canvas');
+    c.width = PAGE_W;
+    c.height = PAGE_H;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, PAGE_W, PAGE_H);
+    return { canvas: c, ctx };
+  }
+
+  // Draw centered multiline text, returns nothing
+  function drawCenteredText(ctx, lines, cx, cy, fontSize, lineHeight, maxWidth) {
+    ctx.font = `${fontSize}px ${FONT_FAMILY}`;
+    ctx.fillStyle = '#000';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const totalH = lines.length * lineHeight;
+    let y = cy - totalH / 2 + lineHeight / 2;
+    for (const line of lines) {
+      ctx.fillText(line, cx, y, maxWidth);
+      y += lineHeight;
+    }
+  }
+
+  // Wrap text to fit maxWidth, return array of lines (max maxLines)
+  function wrapText(ctx, text, maxWidth, maxLines) {
+    const lines = [];
+    let remaining = text;
+    while (remaining.length > 0 && lines.length < maxLines) {
+      let end = remaining.length;
+      while (ctx.measureText(remaining.substring(0, end)).width > maxWidth && end > 1) {
+        end--;
+      }
+      lines.push(remaining.substring(0, end));
+      remaining = remaining.substring(end);
+    }
+    if (remaining.length > 0 && lines.length > 0) {
+      // Truncate last line
+      let last = lines[lines.length - 1];
+      if (remaining.length > 0) {
+        // Try to fit with ellipsis
+        const ellipsis = '...';
+        let truncated = last;
+        while (ctx.measureText(truncated + ellipsis).width > maxWidth && truncated.length > 1) {
+          truncated = truncated.slice(0, -1);
+        }
+        lines[lines.length - 1] = truncated + ellipsis;
+      }
+    }
+    return lines;
+  }
+
+  // Generate barcode as canvas (high resolution for print)
+  // Returns the canvas at its natural size; caller scales via drawImage
+  function generateBarcode(text, targetHeightPx) {
+    const c = document.createElement('canvas');
+    try {
+      JsBarcode(c, text, {
+        format: 'CODE39',
+        width: 2, 
+        height: targetHeightPx,
+        displayValue: false,
+        margin: 0,
+        background: '#ffffff',
+        lineColor: '#000000'
+      });
+    } catch (e) {
+      c.width = 400;
+      c.height = targetHeightPx;
+      const ctx2 = c.getContext('2d');
+      ctx2.fillStyle = '#fff';
+      ctx2.fillRect(0, 0, c.width, c.height);
+      ctx2.fillStyle = '#000';
+      ctx2.font = '12px monospace';
+      ctx2.textAlign = 'center';
+      ctx2.fillText(text, c.width / 2, c.height / 2);
+    }
+    return c;
+  }
+
+  // ===== Spine Label Rendering =====
+  function renderSpinePages() {
+    const cfg = SPINE;
+    const perPage = cfg.cols * cfg.rows;
+    const totalItems = printQueue.length;
+    const pages = [];
+
+    let itemIdx = 0;
+    let cellIdx = startCellIndex; // Start from selected cell on first page
+
+    while (itemIdx < totalItems) {
+      const { canvas, ctx } = createPageCanvas();
+      const mL = mmToPx(cfg.marginLeft);
+      const mT = mmToPx(cfg.marginTop);
+      const cW = mmToPx(cfg.cellW);
+      const cH = mmToPx(cfg.cellH);
+
+      while (cellIdx < perPage && itemIdx < totalItems) {
+        const col = cellIdx % cfg.cols;
+        const row = Math.floor(cellIdx / cfg.cols);
+        const x = mL + col * cW;
+        const y = mT + row * cH;
+
+        const item = printQueue[itemIdx];
+        // Parse call number: split by "/"
+        const callParts = item.callNo.split('/').map(s => s.trim()).filter(Boolean);
+        const allLines = [...callParts, item.accNo];
+
+        // Font sizing: dynamic based on line count (match reference sample)
+        let fontSize, lineH;
+        if (allLines.length <= 4) {
+          fontSize = ptToPx(11);
+          lineH = ptToPx(13);
+        } else if (allLines.length <= 5) {
+          fontSize = ptToPx(9.5);
+          lineH = ptToPx(11);
+        } else {
+          fontSize = ptToPx(8);
+          lineH = ptToPx(9.5);
+        }
+
+        const cx = x + cW / 2;
+        const cy = y + cH / 2;
+        drawCenteredText(ctx, allLines, cx, cy, fontSize, lineH, cW - mmToPx(2));
+
+        itemIdx++;
+        cellIdx++;
+      }
+
+      pages.push(canvas);
+      cellIdx = 0; // Subsequent pages start from cell 0
+    }
+
+    return pages;
+  }
+
+  // ===== Accession Label Rendering =====
+  function renderAccessionPages() {
+    const cfg = ACCESSION;
+    const perPage = cfg.cols * cfg.rows;
+    const totalItems = printQueue.length;
+    const labelText = customText.value.trim();
+    const pages = [];
+
+    let itemIdx = 0;
+    let cellIdx = startCellIndex;
+
+    while (itemIdx < totalItems) {
+      const { canvas, ctx } = createPageCanvas();
+      const mL = mmToPx(cfg.marginLeft);
+      const mT = mmToPx(cfg.marginTop);
+      const cW = mmToPx(cfg.cellW);
+      const cH = mmToPx(cfg.cellH);
+
+      while (cellIdx < perPage && itemIdx < totalItems) {
+        const col = cellIdx % cfg.cols;
+        const row = Math.floor(cellIdx / cfg.cols);
+        const x = mL + col * cW;
+        const y = mT + row * cH;
+
+        const item = printQueue[itemIdx];
+        const padX = mmToPx(1.5);
+        const contentW = cW - padX * 2;
+        const cx = x + cW / 2;
+
+        // Custom text:      y + 1.2mm
+        // Barcode:          y + 4.9mm, height 6.0mm
+        // Accession number: y + 11.3mm (Arial Narrow)
+        // Book title:       y + 16.3mm (KaiTi, 2 lines)
+
+        // 1. Custom text (top left, KaiTi Regular)
+        if (labelText) {
+          const fs1 = ptToPx(9.5);
+          ctx.font = `${fs1}px ${FONT_FAMILY}`;
+          ctx.fillStyle = '#000';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'top';
+          ctx.fillText(labelText, x + padX, y + mmToPx(1.2));
+        }
+
+        // 2. Barcode
+        const barcodeH = mmToPx(6.0);
+        const barcodeY = y + mmToPx(4.9);
+        const barcodeCanvas = generateBarcode(item.accNo, barcodeH);
+        const quietZone = mmToPx(2.5);
+        const barcodeX = x + padX + quietZone;
+        const barcodeW = contentW - quietZone * 2;
+        ctx.drawImage(barcodeCanvas, barcodeX, barcodeY, barcodeW, barcodeH);
+
+        // 3. Accession number (Condensed style)
+        const fs2 = ptToPx(9.5);
+        ctx.save();
+        ctx.translate(cx, y + mmToPx(11.3));
+        ctx.scale(1.1, 0.9);
+        ctx.font = `bold ${fs2}px "Arial Narrow", "Helvetica Condensed", Arial, sans-serif`;
+        ctx.fillStyle = '#000';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText(item.accNo, 0, 0);
+        ctx.restore();
+
+        // 4. Book title
+        const fs3 = ptToPx(9.5);
+        ctx.font = `${fs3}px ${FONT_FAMILY}`;
+        const titleLineH = ptToPx(11);
+        let titleY = y + mmToPx(16.3);
+        const cellBottom = y + cH;
+        // Wrap text manually, clip at cell bottom
+        let remaining = item.title;
+        let titleLineCount = 0;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        while (remaining.length > 0 && titleLineCount < 2) {
+          // Check if this line would exceed cell boundary
+          if (titleY + titleLineH > cellBottom) break;
+          let end = remaining.length;
+          while (ctx.measureText(remaining.substring(0, end)).width > contentW && end > 1) {
+            end--;
+          }
+          const isLastPossible = titleLineCount === 1 || (titleY + titleLineH * 2 > cellBottom);
+          let lineText = remaining.substring(0, end);
+          const rest = remaining.substring(end);
+          if (isLastPossible && rest.length > 0) {
+            // Truncate with ellipsis
+            let t = lineText;
+            while (ctx.measureText(t + '...').width > contentW && t.length > 1) t = t.slice(0, -1);
+            lineText = t + '...';
+          }
+          ctx.fillText(lineText, x + padX, titleY);
+          titleY += titleLineH;
+          remaining = remaining.substring(end);
+          titleLineCount++;
+        }
+
+        itemIdx++;
+        cellIdx++;
+      }
+
+      pages.push(canvas);
+      cellIdx = 0;
+    }
+
+    return pages;
+  }
+
+  // ===== Build PDF from canvas pages =====
+  function buildPdf(canvasPages) {
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+    for (let i = 0; i < canvasPages.length; i++) {
+      if (i > 0) pdf.addPage();
+      const imgData = canvasPages[i].toDataURL('image/png');
+      pdf.addImage(imgData, 'PNG', 0, 0, A4_W, A4_H);
+    }
+
+    return pdf;
+  }
+
+  // ===== Preview & Download =====
+  previewBtn.addEventListener('click', function() {
+    generateAndPreview();
+  });
+
+  downloadBtn.addEventListener('click', function() {
+    if (!lastPdfBlob) {
+      generateAndPreview();
+    }
+    if (lastPdfBlob) {
+      const type = getLabelType();
+      const filename = type === 'spine' ? '書標列印.pdf' : '登錄號標籤列印.pdf';
+      const url = URL.createObjectURL(lastPdfBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+  });
+
+  function generateAndPreview() {
+    if (printQueue.length === 0) return;
+
+    previewBtn.disabled = true;
+    downloadBtn.disabled = true;
+    previewBtn.textContent = '產生中...';
+
+    // Use setTimeout to allow UI to update
+    setTimeout(() => {
+      try {
+        const type = getLabelType();
+        const pages = type === 'spine' ? renderSpinePages() : renderAccessionPages();
+        const pdf = buildPdf(pages);
+
+        lastPdfBlob = pdf.output('blob');
+        const blobUrl = URL.createObjectURL(lastPdfBlob);
+        previewFrame.src = blobUrl;
+        previewSection.style.display = 'block';
+
+        // Scroll to preview
+        previewSection.scrollIntoView({ behavior: 'smooth' });
+      } catch (err) {
+        alert('產生 PDF 失敗: ' + err.message);
+        console.error(err);
+      } finally {
+        previewBtn.disabled = false;
+        downloadBtn.disabled = false;
+        previewBtn.textContent = '預覽';
+      }
+    }, 50);
+  }
+
+  // ===== Utility =====
+  function esc(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function truncate(s, max) {
+    return s.length > max ? s.substring(0, max) + '...' : s;
+  }
+
+})();
+</script>
+</body>
+</html>
