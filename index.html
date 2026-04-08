@@ -624,9 +624,14 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
         const y = mT + row * cH;
 
         const item = printQueue[itemIdx];
-        // Parse call number: split by "/"
-        const callParts = item.callNo.split('/').map(s => s.trim()).filter(Boolean);
-        const allLines = [...callParts, item.accNo];
+        // Parse call number: always reserve 3 lines for call number + 1 for accession no
+        const rawParts = item.callNo.split('/').map(s => s.trim());
+        const allLines = [
+          rawParts[0] || '',
+          rawParts[1] || '',
+          rawParts[2] || '',
+          item.accNo
+        ];
 
         // Font sizing: dynamic based on line count (match reference sample)
         let fontSize, lineH;
@@ -685,10 +690,10 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
         const contentW = cW - padX * 2;
         const cx = x + cW / 2;
 
-        // Custom text:      y + 1.2mm
-        // Barcode:          y + 4.9mm, height 6.0mm
-        // Accession number: y + 11.3mm (Arial Narrow)
-        // Book title:       y + 16.3mm (KaiTi, 2 lines)
+        // Custom text:      y + 0.5mm
+        // Barcode:          y + 3.8mm, height 7.0mm
+        // Accession number: y + 11.3mm (Arial Narrow, not bold)
+        // Book title:       y + 14.3mm (KaiTi, 2 lines)
 
         // 1. Custom text (top left, KaiTi Regular)
         if (labelText) {
@@ -697,24 +702,24 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
           ctx.fillStyle = '#000';
           ctx.textAlign = 'left';
           ctx.textBaseline = 'top';
-          ctx.fillText(labelText, x + padX, y + mmToPx(1.2));
+          ctx.fillText(labelText, x + padX, y + mmToPx(0.5));
         }
 
         // 2. Barcode
-        const barcodeH = mmToPx(6.0);
-        const barcodeY = y + mmToPx(4.9);
+        const barcodeH = mmToPx(7.0);
+        const barcodeY = y + mmToPx(3.8);
         const barcodeCanvas = generateBarcode(item.accNo, barcodeH);
         const quietZone = mmToPx(2.5);
         const barcodeX = x + padX + quietZone;
         const barcodeW = contentW - quietZone * 2;
         ctx.drawImage(barcodeCanvas, barcodeX, barcodeY, barcodeW, barcodeH);
 
-        // 3. Accession number (Condensed style)
-        const fs2 = ptToPx(9.5);
+        // 3. Accession number (Condensed & Flattened)
+        const fs2 = ptToPx(8.0);
         ctx.save();
         ctx.translate(cx, y + mmToPx(11.3));
-        ctx.scale(1.1, 0.9);
-        ctx.font = `bold ${fs2}px "Arial Narrow", "Helvetica Condensed", Arial, sans-serif`;
+        ctx.scale(1.2, 1.0); 
+        ctx.font = `${fs2}px "Arial Narrow", "Franklin Gothic Medium", "Tahoma", sans-serif`;
         ctx.fillStyle = '#000';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
@@ -725,7 +730,7 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
         const fs3 = ptToPx(9.5);
         ctx.font = `${fs3}px ${FONT_FAMILY}`;
         const titleLineH = ptToPx(11);
-        let titleY = y + mmToPx(16.3);
+        let titleY = y + mmToPx(14.3);
         const cellBottom = y + cH;
         // Wrap text manually, clip at cell bottom
         let remaining = item.title;
@@ -733,21 +738,12 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
         while (remaining.length > 0 && titleLineCount < 2) {
-          // Check if this line would exceed cell boundary
           if (titleY + titleLineH > cellBottom) break;
           let end = remaining.length;
           while (ctx.measureText(remaining.substring(0, end)).width > contentW && end > 1) {
             end--;
           }
-          const isLastPossible = titleLineCount === 1 || (titleY + titleLineH * 2 > cellBottom);
-          let lineText = remaining.substring(0, end);
-          const rest = remaining.substring(end);
-          if (isLastPossible && rest.length > 0) {
-            // Truncate with ellipsis
-            let t = lineText;
-            while (ctx.measureText(t + '...').width > contentW && t.length > 1) t = t.slice(0, -1);
-            lineText = t + '...';
-          }
+          const lineText = remaining.substring(0, end);
           ctx.fillText(lineText, x + padX, titleY);
           titleY += titleLineH;
           remaining = remaining.substring(end);
