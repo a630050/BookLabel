@@ -695,16 +695,6 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
         // Accession number: y + 11.3mm (Arial Narrow, not bold)
         // Book title:       y + 14.3mm (KaiTi, 2 lines)
 
-        // 1. Custom text (top left, KaiTi Regular)
-        if (labelText) {
-          const fs1 = ptToPx(9.5);
-          ctx.font = `${fs1}px ${FONT_FAMILY}`;
-          ctx.fillStyle = '#000';
-          ctx.textAlign = 'left';
-          ctx.textBaseline = 'top';
-          ctx.fillText(labelText, x + padX, y + mmToPx(0.5));
-        }
-
         // 2. Barcode
         const barcodeH = mmToPx(7.0);
         const barcodeY = y + mmToPx(3.8);
@@ -713,6 +703,16 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
         const barcodeX = x + padX + quietZone;
         const barcodeW = contentW - quietZone * 2;
         ctx.drawImage(barcodeCanvas, barcodeX, barcodeY, barcodeW, barcodeH);
+
+        // 1. Custom text (Align with barcode left bars)
+        if (labelText) {
+          const fs1 = ptToPx(9.5);
+          ctx.font = `${fs1}px ${FONT_FAMILY}`;
+          ctx.fillStyle = '#000';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'top';
+          ctx.fillText(labelText, barcodeX, y + mmToPx(0.5));
+        }
 
         // 3. Accession number (Condensed & Flattened)
         const fs2 = ptToPx(8.0);
@@ -744,7 +744,7 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
             end--;
           }
           const lineText = remaining.substring(0, end);
-          ctx.fillText(lineText, x + padX, titleY);
+          ctx.fillText(lineText, barcodeX, titleY);
           titleY += titleLineH;
           remaining = remaining.substring(end);
           titleLineCount++;
