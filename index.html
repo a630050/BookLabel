@@ -185,9 +185,10 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
 
   const SPINE = { cols: 4, rows: 10, cellW: 37, cellH: 26, marginLeft: 31, marginTop: 18.5 };
   const ACCESSION = { cols: 3, rows: 10, cellW: 52, cellH: 26, marginLeft: 27, marginTop: 18.5 };
-  // Combined sheet: each row holds 2 book "units", each unit = one 登錄號 cell (52mm) + one 書標 cell (37mm)
-  // Reuses the original cell/margin dimensions; marginLeft centers 2×(52+37)=178mm on the 210mm A4 width
-  const COMBINED = { cols: 2, rows: 10, accessionW: 52, spineW: 37, cellH: 26, marginLeft: 16, marginTop: 18.5 };
+  // Combined sheet: each row holds 2 book "units", each unit = one 登錄號 cell (52mm) + one 書標 cell (39mm)
+  // Measured directly off a real printed sheet (physically different die-cut than the original two types):
+  // margins 1.4cm top/bottom, 1.5cm left/right, row height 2.7cm (10 rows), 52mm+39mm per unit
+  const COMBINED = { cols: 2, rows: 10, accessionW: 52, spineW: 39, cellH: 27, marginLeft: 15, marginTop: 14 };
 
   const FONT_FAMILY = '"DFKai-SB", "BiauKai", "標楷體", "KaiTi", serif';
   const PER_PAGE = 50;
