@@ -144,6 +144,7 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
       <div class="type-row">
         <label><input type="radio" name="labelType" value="spine" checked> 書標 (4×10)</label>
         <label><input type="radio" name="labelType" value="accession"> 登錄號 (3×10)</label>
+        <label><input type="radio" name="labelType" value="combined"> 二合一 (登錄號+書標)</label>
       </div>
       <div class="custom-text-row" id="customTextRow" style="display:none;">
         <span style="font-size:13px;">自訂文字：</span>
@@ -183,6 +184,9 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
 
   const SPINE = { cols: 4, rows: 10, cellW: 37, cellH: 26, marginLeft: 31, marginTop: 18.5 };
   const ACCESSION = { cols: 3, rows: 10, cellW: 52, cellH: 26, marginLeft: 27, marginTop: 18.5 };
+  // Combined sheet: each row holds 2 book "units", each unit = one 登錄號 cell (52mm) + one 書標 cell (37mm)
+  // Reuses the original cell/margin dimensions; marginLeft centers 2×(52+37)=178mm on the 210mm A4 width
+  const COMBINED = { cols: 2, rows: 10, accessionW: 52, spineW: 37, cellH: 26, marginLeft: 16, marginTop: 18.5 };
 
   const FONT_FAMILY = '"DFKai-SB", "BiauKai", "標楷體", "KaiTi", serif';
   const PER_PAGE = 50;
@@ -320,6 +324,26 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
     loadBooksIntoUI();
   });
 
+  // Header labels we recognize, matched after stripping all whitespace
+  // (the new 登錄簿 export pads Chinese headers with spaces, e.g. "登 錄 號")
+  const HEADER_TARGETS = ['登錄號', '索書號', '書名', '著者', '出版社', '出版年', '冊次', '書目號'];
+
+  // Scan the first N rows for a header row containing at least 登錄號 + 書名
+  function findHeaderRow(json) {
+    for (let i = 0; i < Math.min(json.length, 15); i++) {
+      const row = json[i];
+      const colMap = {};
+      for (let c = 0; c < row.length; c++) {
+        const val = String(row[c] || '').replace(/\s+/g, '').trim();
+        if (HEADER_TARGETS.includes(val) && !(val in colMap)) colMap[val] = c;
+      }
+      if (colMap['登錄號'] !== undefined && colMap['書名'] !== undefined) {
+        return { headerRowIndex: i, colMap };
+      }
+    }
+    return null;
+  }
+
   fileInput.addEventListener('change', function(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -331,34 +355,41 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
         const wb = XLSX.read(data, { type: 'array' });
         const sheet = wb.Sheets[wb.SheetNames[0]];
         const json = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
-        // Smart detection: find header row containing "登錄號" in col A or "書名" in col B
-        let dataStartRow = 0;
-        for (let i = 0; i < Math.min(json.length, 10); i++) {
-          const row = json[i];
-          const colA = String(row[0] || '').trim();
-          const colB = String(row[1] || '').trim();
-          if (colA === '登錄號' || colB === '書名') {
-            dataStartRow = i + 1; // Data starts right after header
-            break;
-          }
-        }
-        // Fallback: if no header found, check if row 0 looks like data (starts with digits)
-        if (dataStartRow === 0 && json.length > 0) {
-          const firstA = String(json[0][0] || '').trim();
-          if (/^\d+$/.test(firstA)) {
-            dataStartRow = 0; // No header, data starts at row 0
-          } else {
-            dataStartRow = 1; // Assume 1 title row
-          }
-        }
+
         allBooks = [];
-        for (let i = dataStartRow; i < json.length; i++) {
-          const row = json[i];
-          const accNo = String(row[0] || '').trim();
-          const title = String(row[1] || '').trim();
-          const callNo = String(row[6] || '').trim();
-          if (accNo && /\d/.test(accNo)) {
-            allBooks.push({ accNo, title, callNo });
+        const header = findHeaderRow(json);
+        if (header) {
+          const { headerRowIndex, colMap } = header;
+          const accIdx = colMap['登錄號'];
+          const titleIdx = colMap['書名'];
+          const callIdx = colMap['索書號'];
+          const authorIdx = colMap['著者'];
+          for (let i = headerRowIndex + 1; i < json.length; i++) {
+            const row = json[i];
+            const accNo = String(row[accIdx] || '').trim();
+            // Skip blank rows and footer rows like "總筆數：3" / "第1頁/共1頁"
+            if (!accNo || !/^\d{3,}$/.test(accNo)) continue;
+            const title = String(row[titleIdx] || '').trim();
+            if (!title) continue;
+            const callNo = callIdx !== undefined ? String(row[callIdx] || '').trim() : '';
+            const author = authorIdx !== undefined ? String(row[authorIdx] || '').trim() : '';
+            allBooks.push({ accNo, title, callNo, author });
+          }
+        } else {
+          // Fallback: no recognizable header, assume legacy raw layout
+          // (col0=登錄號, col1=書名, col6=索書號), with an optional single title row
+          let dataStartRow = 1;
+          if (json.length > 0 && /^\d+$/.test(String(json[0][0] || '').trim())) {
+            dataStartRow = 0;
+          }
+          for (let i = dataStartRow; i < json.length; i++) {
+            const row = json[i];
+            const accNo = String(row[0] || '').trim();
+            const title = String(row[1] || '').trim();
+            const callNo = String(row[6] || '').trim();
+            if (accNo && /\d/.test(accNo)) {
+              allBooks.push({ accNo, title, callNo });
+            }
           }
         }
         importInfo.textContent = '已匯入 ' + allBooks.length + ' 筆';
@@ -548,7 +579,7 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
   // ===== Label Type Toggle =====
   document.querySelectorAll('input[name="labelType"]').forEach(radio => {
     radio.addEventListener('change', function() {
-      customTextRow.style.display = this.value === 'accession' ? 'flex' : 'none';
+      customTextRow.style.display = (this.value === 'accession' || this.value === 'combined') ? 'flex' : 'none';
       startCellIndex = 0;
       buildGrid();
     });
@@ -559,7 +590,10 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
   }
 
   function getConfig() {
-    return getLabelType() === 'spine' ? SPINE : ACCESSION;
+    const type = getLabelType();
+    if (type === 'spine') return SPINE;
+    if (type === 'accession') return ACCESSION;
+    return COMBINED;
   }
 
   // ===== Grid Selector =====
@@ -674,6 +708,101 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
     return c;
   }
 
+  // ===== Cell drawing primitives (shared by spine/accession/combined layouts) =====
+  function drawSpineCell(ctx, item, x, y, cW, cH) {
+    // Parse call number: always reserve 3 lines for call number + 1 for accession no
+    const rawParts = item.callNo.split('/').map(s => s.trim());
+    const allLines = [
+      rawParts[0] || '',
+      rawParts[1] || '',
+      rawParts[2] || '',
+      item.accNo
+    ];
+
+    // Font sizing: dynamic based on line count (match reference sample)
+    let fontSize, lineH;
+    if (allLines.length <= 4) {
+      fontSize = ptToPx(11);
+      lineH = ptToPx(13);
+    } else if (allLines.length <= 5) {
+      fontSize = ptToPx(9.5);
+      lineH = ptToPx(11);
+    } else {
+      fontSize = ptToPx(8);
+      lineH = ptToPx(9.5);
+    }
+
+    const cx = x + cW / 2;
+    const cy = y + cH / 2;
+    drawCenteredText(ctx, allLines, cx, cy, fontSize, lineH, cW - mmToPx(2));
+  }
+
+  function drawAccessionCell(ctx, item, x, y, cW, cH, labelText) {
+    const padX = mmToPx(1.5);
+    const contentW = cW - padX * 2;
+    const cx = x + cW / 2;
+
+    // Custom text:      y + 0.5mm
+    // Barcode:          y + 3.8mm, height 7.0mm
+    // Accession number: y + 11.3mm (Arial Narrow, not bold)
+    // Book title:       y + 14.3mm (KaiTi, 2 lines)
+
+    // 2. Barcode
+    const barcodeH = mmToPx(7.0);
+    const barcodeY = y + mmToPx(3.8);
+    const barcodeCanvas = generateBarcode(item.accNo, barcodeH);
+    const quietZone = mmToPx(2.5);
+    const barcodeX = x + padX + quietZone;
+    const barcodeW = contentW - quietZone * 2;
+    ctx.drawImage(barcodeCanvas, barcodeX, barcodeY, barcodeW, barcodeH);
+
+    // 1. Custom text (Align with barcode left bars)
+    if (labelText) {
+      const fs1 = ptToPx(9.5);
+      ctx.font = `${fs1}px ${FONT_FAMILY}`;
+      ctx.fillStyle = '#000';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(labelText, barcodeX, y + mmToPx(0.5));
+    }
+
+    // 3. Accession number (Condensed & Flattened)
+    const fs2 = ptToPx(8.0);
+    ctx.save();
+    ctx.translate(cx, y + mmToPx(11.3));
+    ctx.scale(1.2, 1.0);
+    ctx.font = `${fs2}px "Arial Narrow", "Franklin Gothic Medium", "Tahoma", sans-serif`;
+    ctx.fillStyle = '#000';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(item.accNo, 0, 0);
+    ctx.restore();
+
+    // 4. Book title
+    const fs3 = ptToPx(9.5);
+    ctx.font = `${fs3}px ${FONT_FAMILY}`;
+    const titleLineH = ptToPx(11);
+    let titleY = y + mmToPx(14.3);
+    const cellBottom = y + cH;
+    // Wrap text manually, clip at cell bottom
+    let remaining = item.title;
+    let titleLineCount = 0;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    while (remaining.length > 0 && titleLineCount < 2) {
+      if (titleY + titleLineH > cellBottom) break;
+      let end = remaining.length;
+      while (ctx.measureText(remaining.substring(0, end)).width > contentW && end > 1) {
+        end--;
+      }
+      const lineText = remaining.substring(0, end);
+      ctx.fillText(lineText, barcodeX, titleY);
+      titleY += titleLineH;
+      remaining = remaining.substring(end);
+      titleLineCount++;
+    }
+  }
+
   // ===== Spine Label Rendering =====
   function renderSpinePages() {
     const cfg = SPINE;
@@ -700,32 +829,7 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
         const x = mL + col * cW;
         const y = mT + row * cH;
 
-        const item = printQueue[itemIdx];
-        // Parse call number: always reserve 3 lines for call number + 1 for accession no
-        const rawParts = item.callNo.split('/').map(s => s.trim());
-        const allLines = [
-          rawParts[0] || '',
-          rawParts[1] || '',
-          rawParts[2] || '',
-          item.accNo
-        ];
-
-        // Font sizing: dynamic based on line count (match reference sample)
-        let fontSize, lineH;
-        if (allLines.length <= 4) {
-          fontSize = ptToPx(11);
-          lineH = ptToPx(13);
-        } else if (allLines.length <= 5) {
-          fontSize = ptToPx(9.5);
-          lineH = ptToPx(11);
-        } else {
-          fontSize = ptToPx(8);
-          lineH = ptToPx(9.5);
-        }
-
-        const cx = x + cW / 2;
-        const cy = y + cH / 2;
-        drawCenteredText(ctx, allLines, cx, cy, fontSize, lineH, cW - mmToPx(2));
+        drawSpineCell(ctx, printQueue[itemIdx], x, y, cW, cH);
 
         itemIdx++;
         cellIdx++;
@@ -765,70 +869,7 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
         const x = mL + col * cW;
         const y = mT + row * cH;
 
-        const item = printQueue[itemIdx];
-        const padX = mmToPx(1.5);
-        const contentW = cW - padX * 2;
-        const cx = x + cW / 2;
-
-        // Custom text:      y + 0.5mm
-        // Barcode:          y + 3.8mm, height 7.0mm
-        // Accession number: y + 11.3mm (Arial Narrow, not bold)
-        // Book title:       y + 14.3mm (KaiTi, 2 lines)
-
-        // 2. Barcode
-        const barcodeH = mmToPx(7.0);
-        const barcodeY = y + mmToPx(3.8);
-        const barcodeCanvas = generateBarcode(item.accNo, barcodeH);
-        const quietZone = mmToPx(2.5);
-        const barcodeX = x + padX + quietZone;
-        const barcodeW = contentW - quietZone * 2;
-        ctx.drawImage(barcodeCanvas, barcodeX, barcodeY, barcodeW, barcodeH);
-
-        // 1. Custom text (Align with barcode left bars)
-        if (labelText) {
-          const fs1 = ptToPx(9.5);
-          ctx.font = `${fs1}px ${FONT_FAMILY}`;
-          ctx.fillStyle = '#000';
-          ctx.textAlign = 'left';
-          ctx.textBaseline = 'top';
-          ctx.fillText(labelText, barcodeX, y + mmToPx(0.5));
-        }
-
-        // 3. Accession number (Condensed & Flattened)
-        const fs2 = ptToPx(8.0);
-        ctx.save();
-        ctx.translate(cx, y + mmToPx(11.3));
-        ctx.scale(1.2, 1.0); 
-        ctx.font = `${fs2}px "Arial Narrow", "Franklin Gothic Medium", "Tahoma", sans-serif`;
-        ctx.fillStyle = '#000';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-        ctx.fillText(item.accNo, 0, 0);
-        ctx.restore();
-
-        // 4. Book title
-        const fs3 = ptToPx(9.5);
-        ctx.font = `${fs3}px ${FONT_FAMILY}`;
-        const titleLineH = ptToPx(11);
-        let titleY = y + mmToPx(14.3);
-        const cellBottom = y + cH;
-        // Wrap text manually, clip at cell bottom
-        let remaining = item.title;
-        let titleLineCount = 0;
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
-        while (remaining.length > 0 && titleLineCount < 2) {
-          if (titleY + titleLineH > cellBottom) break;
-          let end = remaining.length;
-          while (ctx.measureText(remaining.substring(0, end)).width > contentW && end > 1) {
-            end--;
-          }
-          const lineText = remaining.substring(0, end);
-          ctx.fillText(lineText, barcodeX, titleY);
-          titleY += titleLineH;
-          remaining = remaining.substring(end);
-          titleLineCount++;
-        }
+        drawAccessionCell(ctx, printQueue[itemIdx], x, y, cW, cH, labelText);
 
         itemIdx++;
         cellIdx++;
@@ -836,6 +877,53 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
 
       pages.push(canvas);
       cellIdx = 0;
+    }
+
+    return pages;
+  }
+
+  // ===== Combined Label Rendering (登錄號 + 書標 per book, 2 units per row) =====
+  function renderCombinedPages() {
+    const cfg = COMBINED;
+    const perPage = cfg.cols * cfg.rows; // "units" per page (1 unit = 1 book = 1 accession cell + 1 spine cell)
+    const totalItems = printQueue.length;
+    const labelText = customText.value.trim();
+    const pages = [];
+
+    let itemIdx = 0;
+    let unitIdx = startCellIndex;
+
+    const accW = mmToPx(cfg.accessionW);
+    const spineW = mmToPx(cfg.spineW);
+    const unitW = accW + spineW;
+
+    while (itemIdx < totalItems) {
+      const { canvas, ctx } = createPageCanvas();
+      const offX = mmToPx(parseFloat(offsetX.value) || 0);
+      const offY = mmToPx(parseFloat(offsetY.value) || 0);
+      ctx.translate(offX, offY);
+      const mL = mmToPx(cfg.marginLeft);
+      const mT = mmToPx(cfg.marginTop);
+      const cH = mmToPx(cfg.cellH);
+
+      while (unitIdx < perPage && itemIdx < totalItems) {
+        const unitCol = unitIdx % cfg.cols;
+        const row = Math.floor(unitIdx / cfg.cols);
+        const unitX = mL + unitCol * unitW;
+        const y = mT + row * cH;
+        const accX = unitX;
+        const spineX = unitX + accW;
+
+        const item = printQueue[itemIdx];
+        drawAccessionCell(ctx, item, accX, y, accW, cH, labelText);
+        drawSpineCell(ctx, item, spineX, y, spineW, cH);
+
+        itemIdx++;
+        unitIdx++;
+      }
+
+      pages.push(canvas);
+      unitIdx = 0;
     }
 
     return pages;
@@ -866,7 +954,7 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
     }
     if (lastPdfBlob) {
       const type = getLabelType();
-      const filename = type === 'spine' ? '書標列印.pdf' : '登錄號標籤列印.pdf';
+      const filename = type === 'spine' ? '書標列印.pdf' : type === 'accession' ? '登錄號標籤列印.pdf' : '二合一標籤列印.pdf';
       const url = URL.createObjectURL(lastPdfBlob);
       const a = document.createElement('a');
       a.href = url;
@@ -887,7 +975,7 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
     setTimeout(() => {
       try {
         const type = getLabelType();
-        const pages = type === 'spine' ? renderSpinePages() : renderAccessionPages();
+        const pages = type === 'spine' ? renderSpinePages() : type === 'accession' ? renderAccessionPages() : renderCombinedPages();
         const pdf = buildPdf(pages);
 
         lastPdfBlob = pdf.output('blob');
