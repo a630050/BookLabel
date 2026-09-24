@@ -258,9 +258,9 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
   downloadTemplateBtn.addEventListener('click', () => {
     const data = [
       ["登錄號", "書名", "著者名", "ISBN", "冊次", "特藏號", "索書號"],
-      ["00000001", "範例書籍一", "作者A", "9789570339031", "01", "", "859.6/8644/"],
-      ["00000002", "範例書籍二", "作者B", "9789579015004", "01", "", "800/1234/v.1"],
-      ["00000003", "範例書籍三", "作者C", "9789860000001", "01", "", "310/5678/v.2"]
+      ["00000001", "範例書籍一", "作者A", "9789570339031", "", "", "859.6/8644"],
+      ["00000002", "範例書籍二", "作者B", "9789579015004", "v.1", "", "800/1234"],
+      ["00000003", "範例書籍三", "作者C", "9789860000001", "v.2", "", "310/5678"]
     ];
     const ws = XLSX.utils.aoa_to_sheet(data);
     // 設定欄寬
@@ -329,9 +329,20 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
     loadBooksIntoUI();
   });
 
-  // Header labels we recognize, matched after stripping all whitespace
-  // (the new 登錄簿 export pads Chinese headers with spaces, e.g. "登 錄 號")
-  const HEADER_TARGETS = ['登錄號', '索書號', '書名', '著者', '出版社', '出版年', '冊次', '書目號'];
+  // 正規化表頭名稱，相容巨曜、全圖系統與自訂範本等多種匯出格式
+  function normalizeHeader(val) {
+    const clean = String(val || '').replace(/\s+/g, '').trim();
+    if (/^(登錄號|條碼號|條碼)$/.test(clean)) return '登錄號';
+    if (/^(書名|正題名|題名)$/.test(clean)) return '書名';
+    if (/^(索書號|分類號)$/.test(clean)) return '索書號';
+    if (/^(著者|著者名|作者|著作者)$/.test(clean)) return '著者';
+    if (/^(冊次|卷冊|冊號|卷期)$/.test(clean)) return '冊次';
+    if (/^(特藏號|特藏)$/.test(clean)) return '特藏號';
+    if (/^(出版社|出版者)$/.test(clean)) return '出版社';
+    if (/^(出版年)$/.test(clean)) return '出版年';
+    if (/^(書目號|系統號|控制號|ISBN)$/.test(clean)) return '書目號';
+    return null;
+  }
 
   // Scan the first N rows for a header row containing at least 登錄號 + 書名
   function findHeaderRow(json) {
@@ -339,8 +350,8 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
       const row = json[i];
       const colMap = {};
       for (let c = 0; c < row.length; c++) {
-        const val = String(row[c] || '').replace(/\s+/g, '').trim();
-        if (HEADER_TARGETS.includes(val) && !(val in colMap)) colMap[val] = c;
+        const canonical = normalizeHeader(row[c]);
+        if (canonical && !(canonical in colMap)) colMap[canonical] = c;
       }
       if (colMap['登錄號'] !== undefined && colMap['書名'] !== undefined) {
         return { headerRowIndex: i, colMap };
@@ -369,6 +380,8 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
           const titleIdx = colMap['書名'];
           const callIdx = colMap['索書號'];
           const authorIdx = colMap['著者'];
+          const volumeIdx = colMap['冊次'];
+          const specialIdx = colMap['特藏號'];
           for (let i = headerRowIndex + 1; i < json.length; i++) {
             const row = json[i];
             const accNo = String(row[accIdx] || '').trim();
@@ -378,11 +391,13 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
             if (!title) continue;
             const callNo = callIdx !== undefined ? String(row[callIdx] || '').trim() : '';
             const author = authorIdx !== undefined ? String(row[authorIdx] || '').trim() : '';
-            allBooks.push({ accNo, title, callNo, author });
+            const volume = volumeIdx !== undefined ? String(row[volumeIdx] || '').trim() : '';
+            const special = specialIdx !== undefined ? String(row[specialIdx] || '').trim() : '';
+            allBooks.push({ accNo, title, callNo, author, volume, special });
           }
         } else {
           // Fallback: no recognizable header, assume legacy raw layout
-          // (col0=登錄號, col1=書名, col6=索書號), with an optional single title row
+          // (col0=登錄號, col1=書名, col4=冊次, col5=特藏號, col6=索書號), with an optional single title row
           let dataStartRow = 1;
           if (json.length > 0 && /^\d+$/.test(String(json[0][0] || '').trim())) {
             dataStartRow = 0;
@@ -391,9 +406,11 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
             const row = json[i];
             const accNo = String(row[0] || '').trim();
             const title = String(row[1] || '').trim();
+            const volume = String(row[4] || '').trim();
+            const special = String(row[5] || '').trim();
             const callNo = String(row[6] || '').trim();
             if (accNo && /\d/.test(accNo)) {
-              allBooks.push({ accNo, title, callNo });
+              allBooks.push({ accNo, title, callNo, volume, special });
             }
           }
         }
@@ -413,6 +430,26 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
   });
 
   // ===== Book Table =====
+  function formatFullCallNo(b) {
+    const parts = [];
+    if (b.special) parts.push(b.special);
+    if (b.callNo) parts.push(b.callNo);
+    if (b.volume && (!b.callNo || !b.callNo.includes(b.volume))) {
+      parts.push(b.volume);
+    }
+    return parts.join(' ');
+  }
+
+  function filterBookMatches(b, q) {
+    if (!q) return true;
+    return b.accNo.toLowerCase().includes(q) ||
+      b.title.toLowerCase().includes(q) ||
+      (b.callNo && b.callNo.toLowerCase().includes(q)) ||
+      (b.volume && b.volume.toLowerCase().includes(q)) ||
+      (b.author && b.author.toLowerCase().includes(q)) ||
+      (b.special && b.special.toLowerCase().includes(q));
+  }
+
   function renderBookTable() {
     const start = currentPage * PER_PAGE;
     const end = Math.min(start + PER_PAGE, filteredBooks.length);
@@ -428,11 +465,12 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
     for (let i = start; i < end; i++) {
       const b = filteredBooks[i];
       const inQueue = printQueue.some(q => q.accNo === b.accNo);
+      const displayCallNo = formatFullCallNo(b);
       html += `<tr>
         <td><input type="checkbox" class="book-cb" data-idx="${i}" ${inQueue ? 'disabled checked' : ''}></td>
         <td>${esc(b.accNo)}</td>
         <td title="${esc(b.title)}">${esc(truncate(b.title, 40))}</td>
-        <td title="${esc(b.callNo)}">${esc(truncate(b.callNo, 20))}</td>
+        <td title="${esc(displayCallNo)}">${esc(truncate(displayCallNo, 20))}</td>
       </tr>`;
     }
     bookTableBody.innerHTML = html;
@@ -492,13 +530,7 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
     } else {
       // Restore original order by re-filtering
       const q = searchInput.value.trim().toLowerCase();
-      if (!q) {
-        filteredBooks = [...allBooks];
-      } else {
-        filteredBooks = allBooks.filter(b =>
-          b.accNo.toLowerCase().includes(q) || b.title.toLowerCase().includes(q)
-        );
-      }
+      filteredBooks = allBooks.filter(b => filterBookMatches(b, q));
     }
   }
 
@@ -508,13 +540,7 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => {
       const q = searchInput.value.trim().toLowerCase();
-      if (!q) {
-        filteredBooks = [...allBooks];
-      } else {
-        filteredBooks = allBooks.filter(b =>
-          b.accNo.toLowerCase().includes(q) || b.title.toLowerCase().includes(q)
-        );
-      }
+      filteredBooks = allBooks.filter(b => filterBookMatches(b, q));
       if (sortOrder !== 0) applySort();
       currentPage = 0;
       renderBookTable();
@@ -552,8 +578,9 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
     clearQueueBtn.disabled = false;
     let html = '';
     printQueue.forEach((item, i) => {
+      const volTag = item.volume ? ` (${item.volume})` : '';
       html += `<div class="queue-item">
-        <span>${esc(item.accNo)} - ${esc(truncate(item.title, 24))}</span>
+        <span>${esc(item.accNo)} - ${esc(truncate(item.title, 20))}${esc(volTag)}</span>
         <button class="remove-btn" data-qi="${i}" title="移除">✕</button>
       </div>`;
     });
@@ -715,14 +742,32 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
 
   // ===== Cell drawing primitives (shared by spine/accession/combined layouts) =====
   function drawSpineCell(ctx, item, x, y, cW, cH) {
-    // Parse call number: always reserve 3 lines for call number + 1 for accession no
-    const rawParts = item.callNo.split('/').map(s => s.trim());
-    const allLines = [
-      rawParts[0] || '',
-      rawParts[1] || '',
-      rawParts[2] || '',
-      item.accNo
-    ];
+    // 解析索書號各部分：特藏號、分類號、著者號、冊次、登錄號
+    const rawParts = item.callNo ? item.callNo.split('/').map(s => s.trim()) : [];
+    const classNo = rawParts[0] || '';
+    const authorNo = rawParts[1] || '';
+    // 冊次：優先取獨立「冊次」欄位，若無則向下相容取索書號中的第3部分（如 310/5678/v.2）
+    const vol = (item.volume !== undefined && item.volume !== null && String(item.volume).trim() !== '')
+      ? String(item.volume).trim()
+      : (rawParts[2] || '');
+    const special = (item.special || '').trim();
+
+    let allLines = [];
+    if (special) {
+      if (vol) {
+        allLines = [special, classNo, authorNo, vol, item.accNo];
+      } else {
+        allLines = [special, classNo, authorNo, item.accNo];
+      }
+    } else {
+      // 無特藏號時：固定保留 3 行索書號/冊次空間 + 1 行登錄號，維持登錄號在書標底部水平齊平
+      allLines = [
+        classNo,
+        authorNo,
+        vol,
+        item.accNo
+      ];
+    }
 
     // Font sizing: dynamic based on line count (match reference sample)
     let fontSize, lineH;
