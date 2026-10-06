@@ -385,8 +385,10 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
           for (let i = headerRowIndex + 1; i < json.length; i++) {
             const row = json[i];
             const accNo = String(row[accIdx] || '').trim();
-            // Skip blank rows and footer rows like "總筆數：3" / "第1頁/共1頁"
-            if (!accNo || !/^\d{3,}$/.test(accNo)) continue;
+            // Footer rows like "總筆數：3" / "第1頁/共1頁" end the data
+            if (row.some(c => String(c || '').replace(/\s+/g, '').startsWith('總筆數'))) break;
+            // Accession no. may be digits only (00081755) or letter-prefixed (K0003648)
+            if (!/^(?=.*\d)[A-Za-z0-9-]{3,}$/.test(accNo)) continue;
             const title = String(row[titleIdx] || '').trim();
             if (!title) continue;
             const callNo = callIdx !== undefined ? String(row[callIdx] || '').trim() : '';
