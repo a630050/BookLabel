@@ -150,6 +150,9 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
         <label><input type="radio" name="labelType" value="accession"> 登錄號 (3×10)</label>
         <label><input type="radio" name="labelType" value="combined"> 二合一 (登錄號+書標)</label>
       </div>
+      <div id="colorBorderRow" style="margin-bottom:10px;">
+        <label style="cursor:pointer; font-size:13px; display:inline-flex; align-items:center; gap:4px; white-space:nowrap;"><input type="checkbox" id="colorBorder" checked> 書標加上分類顏色邊框 (依索書號 0~9 類)</label>
+      </div>
       <div class="custom-text-row" id="customTextRow" style="display:none;">
         <span style="font-size:13px;">自訂文字：</span>
         <input type="text" id="customText" value="○○國小" placeholder="標籤上方文字">
@@ -196,6 +199,9 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
   const FONT_FAMILY = '"DFKai-SB", "BiauKai", "標楷體", "KaiTi", serif';
   const PER_PAGE = 50;
 
+  // 十大分類（索書號首碼 0~9）書標邊框顏色
+  const CLASS_COLORS = ['#5E2488', '#FFFF00', '#663300', '#000000', '#0000FF', '#CF541F', '#CC2779', '#006600', '#FF0000', '#78B025'];
+
   // ===== State =====
   let allBooks = [];
   let filteredBooks = [];
@@ -218,6 +224,8 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
   const clearQueueBtn = $('clearQueueBtn');
   const customTextRow = $('customTextRow');
   const customText = $('customText');
+  const colorBorderRow = $('colorBorderRow');
+  const colorBorder = $('colorBorder');
   const gridWrap = $('gridWrap');
   const previewBtn = $('previewBtn');
   const downloadBtn = $('downloadBtn');
@@ -238,7 +246,8 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
   function saveConfig() {
     const config = {
       offsetX: parseFloat(offsetX.value) || 0,
-      offsetY: parseFloat(offsetY.value) || 0
+      offsetY: parseFloat(offsetY.value) || 0,
+      colorBorder: colorBorder.checked
     };
     localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
   }
@@ -248,10 +257,12 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
       const config = JSON.parse(data);
       offsetX.value = config.offsetX || 0;
       offsetY.value = config.offsetY || 0;
+      if (typeof config.colorBorder === 'boolean') colorBorder.checked = config.colorBorder;
     }
   }
   offsetX.addEventListener('change', saveConfig);
   offsetY.addEventListener('change', saveConfig);
+  colorBorder.addEventListener('change', saveConfig);
   loadConfig();
 
   // ===== Template Generation =====
@@ -614,6 +625,7 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
   document.querySelectorAll('input[name="labelType"]').forEach(radio => {
     radio.addEventListener('change', function() {
       customTextRow.style.display = (this.value === 'accession' || this.value === 'combined') ? 'flex' : 'none';
+      colorBorderRow.style.display = (this.value === 'spine' || this.value === 'combined') ? 'block' : 'none';
       startCellIndex = 0;
       buildGrid();
     });
@@ -787,6 +799,17 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
     const cx = x + cW / 2;
     const cy = y + cH / 2;
     drawCenteredText(ctx, allLines, cx, cy, fontSize, lineH, cW - mmToPx(2));
+
+    // 分類顏色邊框：依分類號首碼 0~9 取色，首碼非數字則不畫
+    if (colorBorder.checked && /^\d/.test(classNo)) {
+      const lw = mmToPx(0.8);
+      const inset = mmToPx(1);
+      ctx.save();
+      ctx.strokeStyle = CLASS_COLORS[parseInt(classNo[0], 10)];
+      ctx.lineWidth = lw;
+      ctx.strokeRect(x + inset + lw / 2, y + inset + lw / 2, cW - 2 * inset - lw, cH - 2 * inset - lw);
+      ctx.restore();
+    }
   }
 
   function drawAccessionCell(ctx, item, x, y, cW, cH, labelText) {
