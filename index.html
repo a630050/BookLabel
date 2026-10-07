@@ -88,6 +88,21 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
 .preview-section { margin-top: 14px; }
 .preview-section iframe { width: 100%; height: 600px; border: 1px solid #ccc; border-radius: 4px; background: #fff; }
 .preview-placeholder { width: 100%; height: 300px; border: 1px solid #ddd; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: #999; font-size: 14px; background: #fafafa; }
+
+/* Color / config panel */
+details.card > summary { cursor: pointer; font-size: 15px; font-weight: bold; color: #34495e; list-style: none; user-select: none; }
+details.card > summary::-webkit-details-marker { display: none; }
+details.card > summary::before { content: '▸ '; }
+details.card[open] > summary::before { content: '▾ '; }
+.panel-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+.panel-actions .status { font-size: 12px; color: #27ae60; }
+.color-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; margin-top: 12px; }
+.color-item { display: flex; align-items: center; gap: 8px; border: 1px solid #e3e6ea; border-radius: 6px; padding: 8px; background: #f9fafb; }
+.color-item input[type=color] { width: 36px; height: 30px; padding: 0; border: 1px solid #ccc; background: none; cursor: pointer; flex-shrink: 0; }
+.color-item .meta { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; font-size: 13px; }
+.color-item .hex { width: 84px; font-family: Consolas, monospace; font-size: 12px; padding: 3px 5px; border: 1px solid #ccc; border-radius: 3px; }
+.color-item .eyedrop { padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; font-size: 12px; color: #555; flex-shrink: 0; }
+.color-item .eyedrop:hover { background: #eef3f8; }
 </style>
 </head>
 <body>
@@ -168,6 +183,20 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
     </div>
   </div>
 
+  <!-- Color & config settings -->
+  <details class="card" id="settingsPanel">
+    <summary>分類顏色與組態設定（書標邊框套色、匯出／匯入）</summary>
+    <div class="panel-actions">
+      <button class="btn btn-orange" id="resetColorsBtn">恢復預設套色</button>
+      <button class="btn btn-blue" id="exportConfigBtn">匯出組態</button>
+      <button class="btn btn-blue" id="importConfigBtn">匯入組態</button>
+      <input type="file" id="importConfigInput" accept=".json,application/json" style="display:none;">
+      <span class="status" id="configStatus"></span>
+    </div>
+    <div class="color-grid" id="colorGrid"></div>
+    <p style="font-size:12px; color:#888; margin-top:10px;">組態含分類顏色、顏色邊框開關、偏移與自訂文字，變更後自動記錄於此瀏覽器；換電腦或換瀏覽器時可用匯出／匯入帶走。</p>
+  </details>
+
   <!-- Preview -->
   <div class="card preview-section" id="previewSection" style="display:none;">
     <h2>列印預覽</h2>
@@ -200,7 +229,9 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
   const PER_PAGE = 50;
 
   // 十大分類（索書號首碼 0~9）書標邊框顏色
-  const CLASS_COLORS = ['#5E2488', '#FFFF00', '#663300', '#000000', '#0000FF', '#CF541F', '#CC2779', '#006600', '#FF0000', '#78B025'];
+  const DEFAULT_CLASS_COLORS = ['#5E2488', '#FFFF00', '#663300', '#000000', '#0000FF', '#CF541F', '#CC2779', '#006600', '#FF0000', '#78B025'];
+  const CLASS_NAMES = ['000總類', '100哲學類', '200宗教類', '300科學類', '400應用科學類', '500社會科學類', '600中國史地類', '700世界史地類', '800語言文學類', '900藝術類'];
+  let classColors = [...DEFAULT_CLASS_COLORS];
 
   // ===== State =====
   let allBooks = [];
@@ -226,6 +257,8 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
   const customText = $('customText');
   const colorBorderRow = $('colorBorderRow');
   const colorBorder = $('colorBorder');
+  const colorGrid = $('colorGrid');
+  const configStatus = $('configStatus');
   const gridWrap = $('gridWrap');
   const previewBtn = $('previewBtn');
   const downloadBtn = $('downloadBtn');
@@ -243,26 +276,126 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
 
   // ===== Persistence =====
   const CONFIG_KEY = 'libstick_config';
-  function saveConfig() {
-    const config = {
+  const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+
+  function collectConfig() {
+    return {
       offsetX: parseFloat(offsetX.value) || 0,
       offsetY: parseFloat(offsetY.value) || 0,
-      colorBorder: colorBorder.checked
+      colorBorder: colorBorder.checked,
+      customText: customText.value,
+      classColors: [...classColors]
     };
-    localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+  }
+
+  // Apply only the fields that are present and valid, so old/partial configs still load
+  function applyConfig(config) {
+    if (!config || typeof config !== 'object') return;
+    if (Number.isFinite(config.offsetX)) offsetX.value = config.offsetX;
+    if (Number.isFinite(config.offsetY)) offsetY.value = config.offsetY;
+    if (typeof config.colorBorder === 'boolean') colorBorder.checked = config.colorBorder;
+    if (typeof config.customText === 'string') customText.value = config.customText;
+    if (Array.isArray(config.classColors)) {
+      classColors = classColors.map((cur, i) => HEX_RE.test(config.classColors[i]) ? config.classColors[i].toUpperCase() : cur);
+    }
+    renderColorPanel();
+  }
+
+  function saveConfig() {
+    try { localStorage.setItem(CONFIG_KEY, JSON.stringify(collectConfig())); } catch (e) {}
   }
   function loadConfig() {
-    const data = localStorage.getItem(CONFIG_KEY);
-    if (data) {
-      const config = JSON.parse(data);
-      offsetX.value = config.offsetX || 0;
-      offsetY.value = config.offsetY || 0;
-      if (typeof config.colorBorder === 'boolean') colorBorder.checked = config.colorBorder;
-    }
+    try {
+      const data = localStorage.getItem(CONFIG_KEY);
+      if (data) applyConfig(JSON.parse(data));
+    } catch (e) {}
   }
   offsetX.addEventListener('change', saveConfig);
   offsetY.addEventListener('change', saveConfig);
   colorBorder.addEventListener('change', saveConfig);
+  customText.addEventListener('change', saveConfig);
+
+  // ===== Color panel =====
+  const hasEyeDropper = 'EyeDropper' in window;
+
+  function renderColorPanel() {
+    colorGrid.innerHTML = classColors.map((c, i) => `
+      <div class="color-item">
+        <input type="color" data-ci="${i}" value="${c.toLowerCase()}">
+        <div class="meta"><span>${CLASS_NAMES[i]}</span><input type="text" class="hex" data-ci="${i}" value="${c}" maxlength="7" spellcheck="false"></div>
+        ${hasEyeDropper ? `<button type="button" class="eyedrop" data-ci="${i}" title="用螢幕取色器吸取顏色">取色</button>` : ''}
+      </div>`).join('');
+  }
+
+  function setClassColor(i, hex) {
+    classColors[i] = hex.toUpperCase();
+    colorGrid.querySelector(`input[type=color][data-ci="${i}"]`).value = hex.toLowerCase();
+    colorGrid.querySelector(`input.hex[data-ci="${i}"]`).value = classColors[i];
+    saveConfig();
+  }
+
+  colorGrid.addEventListener('input', e => {
+    if (e.target.type === 'color') setClassColor(+e.target.dataset.ci, e.target.value);
+  });
+  colorGrid.addEventListener('change', e => {
+    if (!e.target.classList.contains('hex')) return;
+    const i = +e.target.dataset.ci;
+    let v = e.target.value.trim();
+    if (v && v[0] !== '#') v = '#' + v;
+    if (HEX_RE.test(v)) setClassColor(i, v);
+    else e.target.value = classColors[i];
+  });
+  colorGrid.addEventListener('click', async e => {
+    if (!e.target.classList.contains('eyedrop')) return;
+    try {
+      const result = await new EyeDropper().open();
+      setClassColor(+e.target.dataset.ci, result.sRGBHex);
+    } catch (err) { /* user cancelled */ }
+  });
+
+  function showConfigStatus(msg, ok = true) {
+    configStatus.textContent = msg;
+    configStatus.style.color = ok ? '#27ae60' : '#e74c3c';
+    setTimeout(() => { configStatus.textContent = ''; }, 4000);
+  }
+
+  $('resetColorsBtn').addEventListener('click', () => {
+    classColors = [...DEFAULT_CLASS_COLORS];
+    renderColorPanel();
+    saveConfig();
+  });
+
+  $('exportConfigBtn').addEventListener('click', () => {
+    const payload = { app: 'BookLabel', version: 1, ...collectConfig() };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = '書標組態.json';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+
+  $('importConfigBtn').addEventListener('click', () => $('importConfigInput').click());
+  $('importConfigInput').addEventListener('change', e => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const config = JSON.parse(ev.target.result);
+        if (!config || typeof config !== 'object' || Array.isArray(config)) throw new Error('格式不正確');
+        applyConfig(config);
+        saveConfig();
+        showConfigStatus('已匯入組態');
+      } catch (err) {
+        showConfigStatus('匯入失敗：不是有效的組態檔', false);
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  renderColorPanel();
   loadConfig();
 
   // ===== Template Generation =====
@@ -784,11 +917,12 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
     }
 
     // Font sizing: dynamic based on line count (match reference sample)
+    const bordered = colorBorder.checked && /^\d/.test(classNo);
     let fontSize, lineH;
     if (allLines.length <= 4) {
       fontSize = ptToPx(11);
       lineH = ptToPx(13);
-    } else if (allLines.length <= 5) {
+    } else if (allLines.length <= 5 && !bordered) {
       fontSize = ptToPx(9.5);
       lineH = ptToPx(11);
     } else {
@@ -801,11 +935,11 @@ td:first-child, th:first-child { width: 36px; text-align: center; }
     drawCenteredText(ctx, allLines, cx, cy, fontSize, lineH, cW - mmToPx(2));
 
     // 分類顏色邊框：依分類號首碼 0~9 取色，首碼非數字則不畫
-    if (colorBorder.checked && /^\d/.test(classNo)) {
+    if (bordered) {
       const lw = mmToPx(0.8);
-      const inset = mmToPx(1);
+      const inset = mmToPx(1.8); // 離標籤邊緣
       ctx.save();
-      ctx.strokeStyle = CLASS_COLORS[parseInt(classNo[0], 10)];
+      ctx.strokeStyle = classColors[parseInt(classNo[0], 10)];
       ctx.lineWidth = lw;
       ctx.strokeRect(x + inset + lw / 2, y + inset + lw / 2, cW - 2 * inset - lw, cH - 2 * inset - lw);
       ctx.restore();
