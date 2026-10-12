@@ -937,11 +937,12 @@ details.card[open] > summary::before { content: '▾ '; }
     // 分類顏色邊框：依分類號首碼 0~9 取色，首碼非數字則不畫
     if (bordered) {
       const lw = mmToPx(0.8);
-      const inset = mmToPx(1.8); // 離標籤邊緣
+      const boxW = mmToPx(28); // 邊框外緣固定 28×21mm，置中於標籤
+      const boxH = mmToPx(21);
       ctx.save();
       ctx.strokeStyle = classColors[parseInt(classNo[0], 10)];
       ctx.lineWidth = lw;
-      ctx.strokeRect(x + inset + lw / 2, y + inset + lw / 2, cW - 2 * inset - lw, cH - 2 * inset - lw);
+      ctx.strokeRect(x + (cW - boxW) / 2 + lw / 2, y + (cH - boxH) / 2 + lw / 2, boxW - lw, boxH - lw);
       ctx.restore();
     }
   }
