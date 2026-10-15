@@ -103,6 +103,20 @@ details.card[open] > summary::before { content: '▾ '; }
 .color-item .hex { width: 84px; font-family: Consolas, monospace; font-size: 12px; padding: 3px 5px; border: 1px solid #ccc; border-radius: 3px; }
 .color-item .eyedrop { padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; font-size: 12px; color: #555; flex-shrink: 0; }
 .color-item .eyedrop:hover { background: #eef3f8; }
+
+/* Custom template editor */
+.tpl-layout { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 12px; }
+.tpl-form { flex: 1 1 300px; min-width: 280px; }
+.tpl-diagram { flex: 1 1 380px; max-width: 640px; }
+.tpl-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #555; }
+.tpl-row select, .tpl-grid input { padding: 5px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+.tpl-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 12px; margin: 12px 0; }
+.tpl-grid label { display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: #555; }
+.tpl-grid input { width: 100%; }
+.tpl-grid input.invalid { border-color: #e74c3c; background: #fdecea; }
+.tpl-summary { font-size: 12.5px; line-height: 1.7; background: #f9fafb; border: 1px solid #e3e6ea; border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; }
+.tpl-summary .ok { color: #27ae60; font-weight: bold; }
+.tpl-summary .bad { color: #e74c3c; font-weight: bold; }
 </style>
 </head>
 <body>
@@ -164,6 +178,7 @@ details.card[open] > summary::before { content: '▾ '; }
         <label><input type="radio" name="labelType" value="spine" checked> 書標 (4×10)</label>
         <label><input type="radio" name="labelType" value="accession"> 登錄號 (3×10)</label>
         <label><input type="radio" name="labelType" value="combined"> 二合一 (登錄號+書標)</label>
+        <label><input type="radio" name="labelType" value="custom"> 自訂模板</label>
       </div>
       <div id="colorBorderRow" style="margin-bottom:10px;">
         <label style="cursor:pointer; font-size:13px; display:inline-flex; align-items:center; gap:4px; white-space:nowrap;"><input type="checkbox" id="colorBorder" checked> 書標加上分類顏色邊框 (依索書號 0~9 類)</label>
@@ -183,6 +198,36 @@ details.card[open] > summary::before { content: '▾ '; }
     </div>
   </div>
 
+  <!-- Custom template editor (shown only for the 自訂模板 type) -->
+  <div class="card" id="customTplCard" style="display:none;">
+    <h2>自訂模板設定（A4 紙張）</h2>
+    <div class="tpl-layout">
+      <div class="tpl-form">
+        <div class="tpl-row">
+          <span>輸出內容：</span>
+          <select id="tplContent">
+            <option value="spine">書標（索書號）</option>
+            <option value="accession">登錄號（條碼＋書名）</option>
+          </select>
+        </div>
+        <div class="tpl-grid">
+          <label>橫向張數 X <input type="number" id="tplCols" min="1" max="30" step="1"></label>
+          <label>縱向張數 Y <input type="number" id="tplRows" min="1" max="60" step="1"></label>
+          <label>標籤寬度 (mm) <input type="number" id="tplW" min="5" max="200" step="0.1"></label>
+          <label>標籤高度 (mm) <input type="number" id="tplH" min="5" max="200" step="0.1"></label>
+          <label>左右間隔 (mm) <input type="number" id="tplGapX" min="0" max="50" step="0.1"></label>
+          <label>上下間隔 (mm) <input type="number" id="tplGapY" min="0" max="50" step="0.1"></label>
+          <label>左邊界 (mm) <input type="number" id="tplML" min="0" max="150" step="0.1"></label>
+          <label>上邊界 (mm) <input type="number" id="tplMT" min="0" max="150" step="0.1"></label>
+        </div>
+        <div class="tpl-summary" id="tplSummary"></div>
+        <button class="btn btn-orange" id="tplResetBtn">恢復預設（5×11，36.8×23.8mm）</button>
+        <p style="font-size:12px; color:#888; margin-top:10px;">右邊界與下邊界由其餘數值自動推算，圖中藍色為尺寸標註、紅色代表超出 A4。套印時仍可用上方「偏移」微調。</p>
+      </div>
+      <div class="tpl-diagram" id="tplDiagram"></div>
+    </div>
+  </div>
+
   <!-- Color & config settings -->
   <details class="card" id="settingsPanel">
     <summary>分類顏色與組態設定（書標邊框套色、匯出／匯入）</summary>
@@ -194,7 +239,7 @@ details.card[open] > summary::before { content: '▾ '; }
       <span class="status" id="configStatus"></span>
     </div>
     <div class="color-grid" id="colorGrid"></div>
-    <p style="font-size:12px; color:#888; margin-top:10px;">組態含分類顏色、顏色邊框開關、偏移與自訂文字，變更後自動記錄於此瀏覽器；換電腦或換瀏覽器時可用匯出／匯入帶走。</p>
+    <p style="font-size:12px; color:#888; margin-top:10px;">組態含分類顏色、顏色邊框開關、偏移、自訂文字與自訂模板，變更後自動記錄於此瀏覽器；換電腦或換瀏覽器時可用匯出／匯入帶走。</p>
   </details>
 
   <!-- Preview -->
@@ -233,6 +278,11 @@ details.card[open] > summary::before { content: '▾ '; }
   const CLASS_NAMES = ['000總類', '100哲學類', '200宗教類', '300科學類', '400應用科學類', '500社會科學類', '600中國史地類', '700世界史地類', '800語言文學類', '900藝術類'];
   let classColors = [...DEFAULT_CLASS_COLORS];
 
+  // 自訂模板（預設為 50 號 23.8×36.8mm，5×11，A4）
+  const DEFAULT_CUSTOM_TPL = { content: 'spine', cols: 5, rows: 11, w: 36.8, h: 23.8, gapX: 2.5, gapY: 1.6, marginLeft: 8, marginTop: 10.3 };
+  const TPL_LIMITS = { cols: [1, 30, true], rows: [1, 60, true], w: [5, 200], h: [5, 200], gapX: [0, 50], gapY: [0, 50], marginLeft: [0, 150], marginTop: [0, 150] };
+  let customTpl = { ...DEFAULT_CUSTOM_TPL };
+
   // ===== State =====
   let allBooks = [];
   let filteredBooks = [];
@@ -259,6 +309,11 @@ details.card[open] > summary::before { content: '▾ '; }
   const colorBorder = $('colorBorder');
   const colorGrid = $('colorGrid');
   const configStatus = $('configStatus');
+  const tplCard = $('customTplCard');
+  const tplContent = $('tplContent');
+  const tplDiagram = $('tplDiagram');
+  const tplSummary = $('tplSummary');
+  const TPL_INPUTS = { cols: $('tplCols'), rows: $('tplRows'), w: $('tplW'), h: $('tplH'), gapX: $('tplGapX'), gapY: $('tplGapY'), marginLeft: $('tplML'), marginTop: $('tplMT') };
   const gridWrap = $('gridWrap');
   const previewBtn = $('previewBtn');
   const downloadBtn = $('downloadBtn');
@@ -284,8 +339,14 @@ details.card[open] > summary::before { content: '▾ '; }
       offsetY: parseFloat(offsetY.value) || 0,
       colorBorder: colorBorder.checked,
       customText: customText.value,
-      classColors: [...classColors]
+      classColors: [...classColors],
+      customTemplate: { ...customTpl }
     };
+  }
+
+  function isValidTplValue(key, v) {
+    const [min, max, integer] = TPL_LIMITS[key];
+    return typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max && (!integer || Number.isInteger(v));
   }
 
   // Apply only the fields that are present and valid, so old/partial configs still load
@@ -298,7 +359,15 @@ details.card[open] > summary::before { content: '▾ '; }
     if (Array.isArray(config.classColors)) {
       classColors = classColors.map((cur, i) => HEX_RE.test(config.classColors[i]) ? config.classColors[i].toUpperCase() : cur);
     }
+    const tpl = config.customTemplate;
+    if (tpl && typeof tpl === 'object') {
+      const next = { ...customTpl };
+      if (tpl.content === 'spine' || tpl.content === 'accession') next.content = tpl.content;
+      Object.keys(TPL_LIMITS).forEach(k => { if (isValidTplValue(k, tpl[k])) next[k] = tpl[k]; });
+      customTpl = next;
+    }
     renderColorPanel();
+    renderTplPanel();
   }
 
   function saveConfig() {
@@ -395,7 +464,134 @@ details.card[open] > summary::before { content: '▾ '; }
     reader.readAsText(file);
   });
 
+  // ===== Custom template panel =====
+  const fmt = n => String(Math.round(n * 100) / 100);
+
+  function tplMetrics() {
+    const t = customTpl;
+    const totalW = t.marginLeft + t.cols * t.w + (t.cols - 1) * t.gapX;
+    const totalH = t.marginTop + t.rows * t.h + (t.rows - 1) * t.gapY;
+    return { totalW, totalH, remR: A4_W - totalW, remB: A4_H - totalH };
+  }
+
+  function renderTplDiagram() {
+    const t = customTpl, m = tplMetrics();
+    const BLUE = '#0b6fb8', RED = '#d62828';
+    const pitchX = t.w + t.gapX, pitchY = t.h + t.gapY;
+    const lastRight = t.marginLeft + (t.cols - 1) * pitchX + t.w;
+    const lastBottom = m.totalH;
+    const midY = t.marginTop + t.h / 2;
+    const arrow = c => `url(#tplArr${c === RED ? 'R' : 'B'})`;
+    const dim = (x1, y1, x2, y2, c = BLUE) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c}" stroke-width="0.35" marker-start="${arrow(c)}" marker-end="${arrow(c)}"/>`;
+    const ext = (x1, y1, x2, y2) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${BLUE}" stroke-width="0.2" stroke-dasharray="1 1" opacity="0.7"/>`;
+    const txt = (x, y, str, c = BLUE, rot = '') => `<text x="${x}" y="${y}" fill="${c}" font-size="3.4" text-anchor="middle" paint-order="stroke" stroke="#fff" stroke-width="0.9" ${rot ? `transform="rotate(${rot} ${x} ${y})"` : ''}>${str}</text>`;
+    const tri = (pts, c = BLUE) => `<path d="M${pts.join(' L')} Z" fill="${c}"/>`;
+
+    let s = `<defs>
+      <marker id="tplArrB" viewBox="0 0 6 6" refX="5" refY="3" markerUnits="userSpaceOnUse" markerWidth="2.4" markerHeight="2.4" orient="auto-start-reverse"><path d="M0,0 L6,3 L0,6 z" fill="${BLUE}"/></marker>
+      <marker id="tplArrR" viewBox="0 0 6 6" refX="5" refY="3" markerUnits="userSpaceOnUse" markerWidth="2.4" markerHeight="2.4" orient="auto-start-reverse"><path d="M0,0 L6,3 L0,6 z" fill="${RED}"/></marker>
+    </defs>`;
+    s += `<rect x="0" y="0" width="${A4_W}" height="${A4_H}" fill="#fff" stroke="#888" stroke-width="0.4"/>`;
+    for (let r = 0; r < t.rows; r++) {
+      for (let c = 0; c < t.cols; c++) {
+        const x = t.marginLeft + c * pitchX, y = t.marginTop + r * pitchY;
+        const bad = x + t.w > A4_W + 0.01 || y + t.h > A4_H + 0.01;
+        s += `<rect x="${x}" y="${y}" width="${t.w}" height="${t.h}" rx="1.5" fill="${bad ? '#fdeaea' : '#f3f6f9'}" stroke="${bad ? RED : '#555'}" stroke-width="0.25"/>`;
+      }
+    }
+
+    // 標籤寬度（頁面上方）
+    s += ext(t.marginLeft, -5, t.marginLeft, t.marginTop) + ext(t.marginLeft + t.w, -5, t.marginLeft + t.w, t.marginTop);
+    s += dim(t.marginLeft, -5, t.marginLeft + t.w, -5) + txt(t.marginLeft + t.w / 2, -7, `${fmt(t.w)}mm`);
+
+    // 標籤高度（頁面右側）
+    s += ext(lastRight, t.marginTop, 226, t.marginTop) + ext(lastRight, t.marginTop + t.h, 216, t.marginTop + t.h);
+    s += dim(216, t.marginTop, 216, t.marginTop + t.h) + txt(219.8, midY, `${fmt(t.h)}mm`, BLUE, 90);
+
+    // 上邊界 / 下邊界（頁面右側）
+    s += ext(A4_W, 0, 226, 0) + dim(226, 0, 226, t.marginTop) + txt(229.8, t.marginTop / 2, `上 ${fmt(t.marginTop)}mm`, BLUE, 90);
+    const botC = m.remB < -0.01 ? RED : BLUE;
+    s += ext(lastRight, lastBottom, 226, lastBottom) + ext(A4_W, A4_H, 226, A4_H);
+    s += dim(226, Math.min(lastBottom, A4_H), 226, Math.max(lastBottom, A4_H), botC);
+    s += txt(229.8, (lastBottom + A4_H) / 2, m.remB < -0.01 ? `超出 ${fmt(-m.remB)}mm` : `下 ${fmt(m.remB)}mm`, botC, 90);
+
+    // 左邊界 / 右邊界（第一列中線）
+    if (t.marginLeft > 0.05) s += dim(0, midY, t.marginLeft, midY) + txt(t.marginLeft / 2, midY - 1.6, `${fmt(t.marginLeft)}mm`);
+    if (m.remR > 0.05) s += dim(lastRight, midY, A4_W, midY) + txt((lastRight + A4_W) / 2, midY - 1.6, `${fmt(m.remR)}mm`);
+    else if (m.remR < -0.05) s += dim(A4_W, midY, lastRight, midY, RED) + txt(A4_W - 4, midY - 1.6, `超出 ${fmt(-m.remR)}mm`, RED);
+
+    // 左右間隔（最後一列下方，▲ 指向間隙）
+    if (t.gapX > 0) {
+      const gaps = t.cols <= 12 ? t.cols - 1 : Math.min(1, t.cols - 1);
+      for (let c = 0; c < gaps; c++) {
+        const cx = t.marginLeft + c * pitchX + t.w + t.gapX / 2;
+        s += tri([`${cx},${lastBottom + 0.4}`, `${cx - 1.1},${lastBottom + 2.6}`, `${cx + 1.1},${lastBottom + 2.6}`]) + txt(cx, lastBottom + 6, `${fmt(t.gapX)}mm`);
+      }
+    }
+    // 上下間隔（第一欄左側，▶ 指向間隙）
+    if (t.gapY > 0) {
+      const gaps = t.rows <= 14 ? t.rows - 1 : Math.min(1, t.rows - 1);
+      for (let r = 0; r < gaps; r++) {
+        const cy = t.marginTop + r * pitchY + t.h + t.gapY / 2;
+        const x = t.marginLeft;
+        s += tri([`${x - 0.3},${cy}`, `${x - 2.5},${cy - 1.1}`, `${x - 2.5},${cy + 1.1}`]) + txt(x - 4.6, cy, `${fmt(t.gapY)}mm`, BLUE, -90);
+      }
+    }
+    tplDiagram.innerHTML = `<svg viewBox="-6 -16 252 330" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;background:#fafbfc;border:1px solid #e3e6ea;border-radius:6px;font-family:'Microsoft JhengHei',sans-serif;">${s}</svg>`;
+  }
+
+  function renderTplSummary() {
+    const t = customTpl, m = tplMetrics();
+    const over = m.remR < -0.01 || m.remB < -0.01;
+    tplSummary.innerHTML =
+      `橫向：${fmt(t.marginLeft)} + ${t.cols}×${fmt(t.w)} + ${t.cols - 1}×${fmt(t.gapX)} = ${fmt(m.totalW)}mm → 右邊界 ${fmt(m.remR)}mm（A4 寬 ${A4_W}）<br>` +
+      `縱向：${fmt(t.marginTop)} + ${t.rows}×${fmt(t.h)} + ${t.rows - 1}×${fmt(t.gapY)} = ${fmt(m.totalH)}mm → 下邊界 ${fmt(m.remB)}mm（A4 高 ${A4_H}）<br>` +
+      `每頁 ${t.cols * t.rows} 張　` +
+      (over ? '<span class="bad">⚠ 超出 A4 紙張範圍，請檢查尺寸</span>' : '<span class="ok">✓ 符合 A4 紙張範圍</span>');
+  }
+
+  // 依 customTpl 更新輸入框、算式與標註圖
+  function renderTplPanel() {
+    tplContent.value = customTpl.content;
+    Object.keys(TPL_INPUTS).forEach(k => { TPL_INPUTS[k].value = customTpl[k]; TPL_INPUTS[k].classList.remove('invalid'); });
+    renderTplSummary();
+    renderTplDiagram();
+    updateTypeUI();
+    if (getLabelType() === 'custom') {
+      startCellIndex = Math.min(startCellIndex, customTpl.cols * customTpl.rows - 1);
+      buildGrid();
+    }
+  }
+
+  Object.keys(TPL_INPUTS).forEach(k => {
+    TPL_INPUTS[k].addEventListener('input', () => {
+      const v = parseFloat(TPL_INPUTS[k].value);
+      const ok = isValidTplValue(k, v);
+      TPL_INPUTS[k].classList.toggle('invalid', !ok);
+      if (!ok) return;
+      customTpl[k] = v;
+      renderTplSummary();
+      renderTplDiagram();
+      if (getLabelType() === 'custom') {
+        startCellIndex = Math.min(startCellIndex, customTpl.cols * customTpl.rows - 1);
+        buildGrid();
+      }
+      saveConfig();
+    });
+  });
+  tplContent.addEventListener('change', () => {
+    customTpl.content = tplContent.value;
+    updateTypeUI();
+    saveConfig();
+  });
+  $('tplResetBtn').addEventListener('click', () => {
+    customTpl = { ...DEFAULT_CUSTOM_TPL };
+    renderTplPanel();
+    saveConfig();
+  });
+
   renderColorPanel();
+  renderTplPanel();
   loadConfig();
 
   // ===== Template Generation =====
@@ -755,10 +951,18 @@ details.card[open] > summary::before { content: '▾ '; }
   }
 
   // ===== Label Type Toggle =====
+  // 依標籤類型（自訂時再看輸出內容）顯示對應的設定列
+  function updateTypeUI() {
+    const type = getLabelType();
+    const isCustom = type === 'custom';
+    tplCard.style.display = isCustom ? 'block' : 'none';
+    customTextRow.style.display = (type === 'accession' || type === 'combined' || (isCustom && customTpl.content === 'accession')) ? 'flex' : 'none';
+    colorBorderRow.style.display = (type === 'spine' || type === 'combined' || (isCustom && customTpl.content === 'spine')) ? 'block' : 'none';
+  }
+
   document.querySelectorAll('input[name="labelType"]').forEach(radio => {
     radio.addEventListener('change', function() {
-      customTextRow.style.display = (this.value === 'accession' || this.value === 'combined') ? 'flex' : 'none';
-      colorBorderRow.style.display = (this.value === 'spine' || this.value === 'combined') ? 'block' : 'none';
+      updateTypeUI();
       startCellIndex = 0;
       buildGrid();
     });
@@ -772,6 +976,7 @@ details.card[open] > summary::before { content: '▾ '; }
     const type = getLabelType();
     if (type === 'spine') return SPINE;
     if (type === 'accession') return ACCESSION;
+    if (type === 'custom') return { cols: customTpl.cols, rows: customTpl.rows };
     return COMBINED;
   }
 
@@ -937,8 +1142,8 @@ details.card[open] > summary::before { content: '▾ '; }
     // 分類顏色邊框：依分類號首碼 0~9 取色，首碼非數字則不畫
     if (bordered) {
       const lw = mmToPx(0.8);
-      const boxW = mmToPx(28); // 邊框外緣固定 28×21mm，置中於標籤
-      const boxH = mmToPx(21);
+      const boxW = Math.min(mmToPx(28), cW - mmToPx(2)); // 邊框外緣固定 28×21mm 置中；標籤太小時縮到不超出
+      const boxH = Math.min(mmToPx(21), cH - mmToPx(2));
       ctx.save();
       ctx.strokeStyle = classColors[parseInt(classNo[0], 10)];
       ctx.lineWidth = lw;
@@ -1139,6 +1344,44 @@ details.card[open] > summary::before { content: '▾ '; }
     return pages;
   }
 
+  // ===== Custom Template Rendering (任意 X×Y 張，內容為書標或登錄號) =====
+  function renderCustomPages() {
+    const t = customTpl;
+    const perPage = t.cols * t.rows;
+    const totalItems = printQueue.length;
+    const labelText = customText.value.trim();
+    const cW = mmToPx(t.w);
+    const cH = mmToPx(t.h);
+    const pages = [];
+
+    let itemIdx = 0;
+    let cellIdx = startCellIndex;
+
+    while (itemIdx < totalItems) {
+      const { canvas, ctx } = createPageCanvas();
+      ctx.translate(mmToPx(parseFloat(offsetX.value) || 0), mmToPx(parseFloat(offsetY.value) || 0));
+
+      while (cellIdx < perPage && itemIdx < totalItems) {
+        const col = cellIdx % t.cols;
+        const row = Math.floor(cellIdx / t.cols);
+        const x = mmToPx(t.marginLeft + col * (t.w + t.gapX));
+        const y = mmToPx(t.marginTop + row * (t.h + t.gapY));
+        const item = printQueue[itemIdx];
+
+        if (t.content === 'spine') drawSpineCell(ctx, item, x, y, cW, cH);
+        else drawAccessionCell(ctx, item, x, y, cW, cH, labelText);
+
+        itemIdx++;
+        cellIdx++;
+      }
+
+      pages.push(canvas);
+      cellIdx = 0;
+    }
+
+    return pages;
+  }
+
   // ===== Build PDF from canvas pages =====
   function buildPdf(canvasPages) {
     const { jsPDF } = window.jspdf;
@@ -1164,7 +1407,7 @@ details.card[open] > summary::before { content: '▾ '; }
     }
     if (lastPdfBlob) {
       const type = getLabelType();
-      const filename = type === 'spine' ? '書標列印.pdf' : type === 'accession' ? '登錄號標籤列印.pdf' : '二合一標籤列印.pdf';
+      const filename = { spine: '書標列印.pdf', accession: '登錄號標籤列印.pdf', combined: '二合一標籤列印.pdf', custom: '自訂模板列印.pdf' }[type];
       const url = URL.createObjectURL(lastPdfBlob);
       const a = document.createElement('a');
       a.href = url;
@@ -1185,7 +1428,8 @@ details.card[open] > summary::before { content: '▾ '; }
     setTimeout(() => {
       try {
         const type = getLabelType();
-        const pages = type === 'spine' ? renderSpinePages() : type === 'accession' ? renderAccessionPages() : renderCombinedPages();
+        const renderers = { spine: renderSpinePages, accession: renderAccessionPages, combined: renderCombinedPages, custom: renderCustomPages };
+        const pages = renderers[type]();
         const pdf = buildPdf(pages);
 
         lastPdfBlob = pdf.output('blob');
